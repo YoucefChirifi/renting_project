@@ -1932,6 +1932,7 @@ function displayAdminDashboard($auth, $app, $db) {
 <?php
 }
 
+
 // Dashboard Super Admin (Propriétaire)
 function displaySuperAdminDashboard($auth, $app, $db) {
     $companies = $db->query("SELECT c.*, (SELECT COUNT(*) FROM administrator WHERE company_id = c.company_id) as admin_count, (SELECT COUNT(*) FROM agent WHERE company_id = c.company_id) as agent_count, (SELECT COUNT(*) FROM client WHERE company_id = c.company_id) as client_count FROM company c ORDER BY c.created_at DESC");
