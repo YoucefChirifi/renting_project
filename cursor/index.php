@@ -163,6 +163,17 @@ class Database {
             FOREIGN KEY (id_payment) REFERENCES payment(id_payment)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
         $this->conn->query($sql);
+        
+        // Table owner (propriétaire du site)
+        $sql = "CREATE TABLE IF NOT EXISTS owner (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            nom VARCHAR(100) NOT NULL,
+            prenom VARCHAR(100) NOT NULL,
+            email VARCHAR(100) UNIQUE NOT NULL,
+            password VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4";
+        $this->conn->query($sql);
     }
     
     private function seedData() {
@@ -193,51 +204,42 @@ class Database {
             }
         }
         
-        // Vérifier si l'agence cherifi_youssouf existe
-        $checkCompany = $this->conn->query("SELECT company_id FROM company WHERE c_name LIKE '%cherifi_youssouf%'");
-        if ($checkCompany->num_rows == 0) {
-            // Créer l'agence
-            $this->conn->query("INSERT INTO company (c_name, frais_mensuel, special_code) 
-                               VALUES ('Agence Cherifi Youssouf', 75000, 'CHERIFI001')");
-            $company_id = $this->conn->insert_id;
-            
-            // Créer l'administrateur
-            $hashed_password = password_hash('admin123', PASSWORD_DEFAULT);
-            $this->conn->query("INSERT INTO administrator (nom, prenom, age, numero_tlfn, nationalite, 
-                              numero_cart_national, wilaya_id, salaire, company_id, email, password) 
-                              VALUES ('Cherifi', 'Youssouf', 35, '0555123456', 'Algérienne', 
-                              '1234567890123456', 16, 120000, $company_id, 'admin@cherifi.com', '$hashed_password')");
-            
-            // Créer un agent
-            $this->conn->query("INSERT INTO agent (nom, prenom, age, numero_tlfn, nationalite, 
-                              numero_cart_national, wilaya_id, salaire, company_id, email, password) 
-                              VALUES ('Agent', 'Principal', 28, '0555123457', 'Algérienne', 
-                              '1234567890123457', 16, 80000, $company_id, 'agent@cherifi.com', '$hashed_password')");
-            
-            // Créer un client de test
-            $this->conn->query("INSERT INTO client (nom, prenom, age, numero_tlfn, nationalite, 
-                              numero_cart_national, wilaya_id, status, company_id, email, password) 
-                              VALUES ('Client', 'Test', 25, '0555123458', 'Algérienne', 
-                              '1234567890123458', 31, 'non reserve', $company_id, 'client@cherifi.com', '$hashed_password')");
-            
-            // Créer des voitures d'exemple
-            $cars = [
-                ['Toyota', 'Corolla', 2022, 1, 5000, 1, 'Blanc'],
-                ['BMW', '3 Series', 2021, 2, 8000, 1, 'Noir'],
-                ['Mercedes-Benz', 'S-Class', 2023, 3, 15000, 1, 'Argent'],
-                ['Volkswagen', 'Golf', 2021, 1, 4500, 1, 'Bleu'],
-                ['Renault', 'Clio', 2020, 1, 4000, 1, 'Rouge'],
-                ['Audi', 'A4', 2022, 2, 9000, 1, 'Gris'],
-                ['Porsche', 'Panamera', 2023, 3, 18000, 1, 'Noir']
-            ];
-            
-            foreach ($cars as $car) {
-                $serial = rand(100000, 999999);
-                $matricule = "$serial {$car[3]} {$car[2]} 31"; // Format: serial category year wilaya
-                $this->conn->query("INSERT INTO car (company_id, marque, model, annee, category, prix_day, 
-                                  status_voiture, matricule, color, voiture_work) 
-                                  VALUES ($company_id, '{$car[0]}', '{$car[1]}', {$car[2]}, {$car[3]}, {$car[4]}, 
-                                  {$car[5]}, '$matricule', '{$car[6]}', 'disponible')");
+        // Créer le propriétaire du site (chirifi youssouf)
+        $checkOwner = $this->conn->query("SELECT id FROM owner WHERE email = 'chirifi.youssouf@owner.com'");
+        if ($checkOwner->num_rows == 0) {
+            $hashed_password = password_hash('owner123', PASSWORD_DEFAULT);
+            $this->conn->query("INSERT INTO owner (nom, prenom, email, password) 
+                               VALUES ('Chirifi', 'Youssouf', 'chirifi.youssouf@owner.com', '$hashed_password')");
+        }
+        
+        // Créer trois entreprises algériennes
+        $companies = [
+            ['name' => 'Location Auto Alger', 'frais' => 75000, 'code' => 'LAA001'],
+            ['name' => 'Rent Car Oran', 'frais' => 65000, 'code' => 'RCO001'],
+            ['name' => 'Auto Location Constantine', 'frais' => 70000, 'code' => 'ALC001']
+        ];
+        
+        foreach ($companies as $comp) {
+            $checkComp = $this->conn->query("SELECT company_id FROM company WHERE c_name = '{$comp['name']}'");
+            if ($checkComp->num_rows == 0) {
+                $this->conn->query("INSERT INTO company (c_name, frais_mensuel, special_code) 
+                                   VALUES ('{$comp['name']}', {$comp['frais']}, '{$comp['code']}')");
+                $company_id = $this->conn->insert_id;
+                
+                // Créer un administrateur pour chaque entreprise
+                $hashed_password = password_hash('admin123', PASSWORD_DEFAULT);
+                $admin_email = strtolower(str_replace(' ', '', $comp['name'])) . '@admin.com';
+                $this->conn->query("INSERT INTO administrator (nom, prenom, age, numero_tlfn, nationalite, 
+                                  numero_cart_national, wilaya_id, salaire, company_id, email, password) 
+                                  VALUES ('Admin', 'Principal', 30, '0555000000', 'Algérienne', 
+                                  '0000000000000000', 16, 120000, $company_id, '$admin_email', '$hashed_password')");
+                
+                // Créer un agent pour chaque entreprise
+                $agent_email = strtolower(str_replace(' ', '', $comp['name'])) . '@agent.com';
+                $this->conn->query("INSERT INTO agent (nom, prenom, age, numero_tlfn, nationalite, 
+                                  numero_cart_national, wilaya_id, salaire, company_id, email, password) 
+                                  VALUES ('Agent', 'Principal', 28, '0555000001', 'Algérienne', 
+                                  '0000000000000001', 16, 80000, $company_id, '$agent_email', '$hashed_password')");
             }
         }
     }
@@ -280,7 +282,13 @@ class Auth {
                 $_SESSION['user_role'] = $role;
                 $_SESSION['user_email'] = $user['email'];
                 $_SESSION['user_name'] = $user['prenom'] . ' ' . $user['nom'];
-                $_SESSION['company_id'] = $user['company_id'] ?? 1;
+                
+                // Owner n'a pas de company_id
+                if ($role == 'owner') {
+                    $_SESSION['company_id'] = 0;
+                } else {
+                    $_SESSION['company_id'] = $user['company_id'] ?? 1;
+                }
                 
                 // Cookie pour 30 jours
                 setcookie('user_id', $user['id'], time() + (30 * 24 * 60 * 60), "/");
@@ -316,7 +324,8 @@ class Auth {
         $tables = [
             'client' => 'client',
             'agent' => 'agent',
-            'administrator' => 'administrator'
+            'administrator' => 'administrator',
+            'owner' => 'owner'
         ];
         return $tables[$role] ?? 'client';
     }
@@ -564,6 +573,9 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
             case 'administrator':
                 $redirect = 'admin';
                 break;
+            case 'owner':
+                $redirect = 'owner';
+                break;
             default:
                 $redirect = 'client';
         }
@@ -574,32 +586,53 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['login'])) {
     }
 }
 
-// Traiter l'inscription client
-if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['register'])) {
-    // Validation de l'âge
-    if ($_POST['age'] < 24) {
-        $register_error = "L'âge minimum est de 24 ans";
-    } elseif ($_POST['password'] != $_POST['confirm_password']) {
-        $register_error = "Les mots de passe ne correspondent pas";
-    } else {
-        $data = [
-            'nom' => $_POST['nom'],
-            'prenom' => $_POST['prenom'],
-            'age' => $_POST['age'],
-            'numero_tlfn' => $_POST['numero_tlfn'],
-            'nationalite' => $_POST['nationalite'],
-            'numero_cart_national' => $_POST['numero_cart_national'],
-            'wilaya_id' => $_POST['wilaya_id'],
-            'email' => $_POST['email'],
-            'password' => $_POST['password'],
-            'company_id' => 1 // Par défaut la première agence
-        ];
-        
-        if ($auth->registerClient($data)) {
-            $register_success = "Compte créé avec succès! Vous pouvez maintenant vous connecter.";
+// Traiter l'ajout de compagnie par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_company']) && $auth->getUserRole() == 'owner') {
+    $c_name = $_POST['c_name'] ?? '';
+    $frais_mensuel = $_POST['frais_mensuel'] ?? 0;
+    $special_code = $_POST['special_code'] ?? '';
+    
+    if ($c_name && $frais_mensuel >= 30000 && $frais_mensuel <= 150000) {
+        $stmt = $db->prepare("INSERT INTO company (c_name, frais_mensuel, special_code) VALUES (?, ?, ?)");
+        $stmt->bind_param("sds", $c_name, $frais_mensuel, $special_code);
+        if ($stmt->execute()) {
+            $company_success = "Compagnie ajoutée avec succès!";
         } else {
-            $register_error = "Erreur lors de la création du compte. L'email existe peut-être déjà.";
+            $company_error = "Erreur lors de l'ajout de la compagnie.";
         }
+    } else {
+        $company_error = "Données invalides. Le frais mensuel doit être entre 30000 et 150000 DA.";
+    }
+}
+
+// Traiter l'ajout d'administrateur par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_admin']) && $auth->getUserRole() == 'owner') {
+    $nom = $_POST['nom'] ?? '';
+    $prenom = $_POST['prenom'] ?? '';
+    $age = $_POST['age'] ?? 0;
+    $numero_tlfn = $_POST['numero_tlfn'] ?? '';
+    $nationalite = $_POST['nationalite'] ?? '';
+    $numero_cart_national = $_POST['numero_cart_national'] ?? '';
+    $wilaya_id = $_POST['wilaya_id'] ?? 16;
+    $salaire = $_POST['salaire'] ?? 0;
+    $company_id = $_POST['company_id'] ?? 0;
+    $email = $_POST['email'] ?? '';
+    $password = $_POST['password'] ?? '';
+    
+    if ($nom && $prenom && $age >= 24 && $email && $password && $company_id > 0) {
+        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+        $stmt = $db->prepare("INSERT INTO administrator (nom, prenom, age, numero_tlfn, nationalite, 
+                             numero_cart_national, wilaya_id, salaire, company_id, email, password) 
+                             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+        $stmt->bind_param("ssissssdiss", $nom, $prenom, $age, $numero_tlfn, $nationalite, 
+                         $numero_cart_national, $wilaya_id, $salaire, $company_id, $email, $hashed_password);
+        if ($stmt->execute()) {
+            $admin_success = "Administrateur ajouté avec succès!";
+        } else {
+            $admin_error = "Erreur lors de l'ajout de l'administrateur. L'email existe peut-être déjà.";
+        }
+    } else {
+        $admin_error = "Veuillez remplir tous les champs obligatoires. L'âge minimum est de 24 ans.";
     }
 }
 
@@ -618,6 +651,9 @@ if (isset($_GET['page'])) {
             break;
         case 'administrator':
             $page = 'admin';
+            break;
+        case 'owner':
+            $page = 'owner';
             break;
     }
 }
@@ -732,9 +768,13 @@ function displayNavigation($auth, $app) {
                             <?php echo htmlspecialchars($_SESSION['user_name']); ?>
                         </span>
                         <span class="px-3 py-1 rounded-full text-sm 
-                            <?php echo $_SESSION['user_role'] == 'administrator' ? 'bg-purple-100 text-purple-800' : 
-                                  ($_SESSION['user_role'] == 'agent' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800'); ?>">
-                            <?php echo ucfirst($_SESSION['user_role']); ?>
+                            <?php 
+                            $role = $_SESSION['user_role'];
+                            echo $role == 'owner' ? 'bg-yellow-100 text-yellow-800' :
+                                 ($role == 'administrator' ? 'bg-purple-100 text-purple-800' : 
+                                  ($role == 'agent' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800')); 
+                            ?>">
+                            <?php echo $role == 'owner' ? 'Propriétaire' : ucfirst($role); ?>
                         </span>
                         <a href="index.php?action=logout" class="bg-red-500 hover:bg-red-600 text-white px-4 py-2 rounded-lg transition">
                             <i class="fas fa-sign-out-alt mr-2"></i>Déconnexion
@@ -742,9 +782,6 @@ function displayNavigation($auth, $app) {
                     <?php else: ?>
                         <a href="index.php" class="text-gray-700 hover:text-blue-600 px-3 py-2">
                             <i class="fas fa-home mr-1"></i>Accueil
-                        </a>
-                        <a href="index.php?page=register" class="text-blue-600 hover:text-blue-800 px-3 py-2">
-                            <i class="fas fa-user-plus mr-1"></i>Inscription
                         </a>
                     <?php endif; ?>
                 </div>
@@ -783,8 +820,12 @@ switch ($page) {
     case 'home':
         displayHomePage($auth, $app, $db);
         break;
-    case 'register':
-        displayRegisterPage($auth, $app);
+    case 'owner':
+        if ($auth->isLoggedIn() && $auth->getUserRole() == 'owner') {
+            displayOwnerDashboard($auth, $app, $db);
+        } else {
+            displayHomePage($auth, $app, $db);
+        }
         break;
     case 'client':
         if ($auth->isLoggedIn() && $auth->getUserRole() == 'client') {
@@ -832,7 +873,20 @@ function displayHomePage($auth, $app, $db) {
             
             <?php if (!$auth->isLoggedIn()): ?>
             <!-- Sélection du rôle -->
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+                <!-- Owner Card -->
+                <div class="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 text-center card-hover border border-yellow-100">
+                    <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                        <i class="fas fa-crown text-yellow-600 text-2xl"></i>
+                    </div>
+                    <h3 class="text-xl font-bold text-gray-800 mb-3">Propriétaire</h3>
+                    <p class="text-gray-600 mb-6">Gestion des entreprises</p>
+                    <button onclick="showLogin('owner')" 
+                            class="w-full bg-yellow-500 hover:bg-yellow-600 text-white py-3 rounded-lg transition">
+                        <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
+                    </button>
+                </div>
+                
                 <!-- Client Card -->
                 <div class="bg-gradient-to-br from-green-50 to-blue-50 rounded-xl p-6 text-center card-hover border border-green-100">
                     <div class="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -893,10 +947,8 @@ function displayHomePage($auth, $app, $db) {
                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                     </div>
                     
-                    <div class="flex justify-between items-center">
-                        <a href="index.php?page=register" class="text-blue-600 hover:text-blue-800 text-sm">
-                            Pas de compte ? S'inscrire
-                        </a>
+                    <div class="flex justify-end items-center">
+                        <span class="text-gray-500 text-sm mr-4">* L'inscription se fait uniquement par un agent</span>
                         <button type="submit" 
                                 class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
                             <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
@@ -974,7 +1026,8 @@ function displayHomePage($auth, $app, $db) {
         const titles = {
             'client': 'Connexion Client',
             'agent': 'Connexion Agent',
-            'administrator': 'Connexion Administrateur'
+            'administrator': 'Connexion Administrateur',
+            'owner': 'Connexion Propriétaire'
         };
         
         document.getElementById('formTitle').textContent = titles[role];
@@ -2371,6 +2424,269 @@ function displayAdminDashboard($auth, $app, $db) {
     <?php
 }
 
+function displayOwnerDashboard($auth, $app, $db) {
+    $owner_id = $auth->getUserId();
+    
+    // Messages
+    if (isset($company_success)) {
+        echo '<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($company_success) . '</div>';
+    }
+    if (isset($company_error)) {
+        echo '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($company_error) . '</div>';
+    }
+    if (isset($admin_success)) {
+        echo '<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($admin_success) . '</div>';
+    }
+    if (isset($admin_error)) {
+        echo '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($admin_error) . '</div>';
+    }
+    ?>
+    
+    <div class="bg-white rounded-xl shadow-lg p-8">
+        <div class="flex justify-between items-center mb-8">
+            <div>
+                <h1 class="text-3xl font-bold text-gray-800">
+                    <i class="fas fa-crown text-yellow-500 mr-2"></i>
+                    Tableau de Bord Propriétaire
+                </h1>
+                <p class="text-gray-600 mt-2">Bienvenue, <?php echo htmlspecialchars($_SESSION['user_name']); ?></p>
+            </div>
+        </div>
+        
+        <!-- Statistiques -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+            <div class="bg-blue-50 rounded-lg p-6 border border-blue-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-blue-600 text-sm font-semibold">Total Entreprises</p>
+                        <p class="text-3xl font-bold text-blue-800">
+                            <?php 
+                            $total_companies = $db->query("SELECT COUNT(*) as count FROM company")->fetch_assoc();
+                            echo $total_companies['count'];
+                            ?>
+                        </p>
+                    </div>
+                    <i class="fas fa-building text-blue-400 text-4xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-green-50 rounded-lg p-6 border border-green-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-green-600 text-sm font-semibold">Total Administrateurs</p>
+                        <p class="text-3xl font-bold text-green-800">
+                            <?php 
+                            $total_admins = $db->query("SELECT COUNT(*) as count FROM administrator")->fetch_assoc();
+                            echo $total_admins['count'];
+                            ?>
+                        </p>
+                    </div>
+                    <i class="fas fa-user-shield text-green-400 text-4xl"></i>
+                </div>
+            </div>
+            
+            <div class="bg-purple-50 rounded-lg p-6 border border-purple-200">
+                <div class="flex items-center justify-between">
+                    <div>
+                        <p class="text-purple-600 text-sm font-semibold">Total Agents</p>
+                        <p class="text-3xl font-bold text-purple-800">
+                            <?php 
+                            $total_agents = $db->query("SELECT COUNT(*) as count FROM agent")->fetch_assoc();
+                            echo $total_agents['count'];
+                            ?>
+                        </p>
+                    </div>
+                    <i class="fas fa-user-tie text-purple-400 text-4xl"></i>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Actions -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8 mb-8">
+            <!-- Ajouter une entreprise -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-plus-circle text-blue-500 mr-2"></i>
+                    Ajouter une Entreprise
+                </h2>
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="add_company" value="1">
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nom de l'entreprise *</label>
+                        <input type="text" name="c_name" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Frais mensuel (DA) *</label>
+                        <input type="number" name="frais_mensuel" min="30000" max="150000" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        <p class="text-sm text-gray-500 mt-1">Entre 30,000 et 150,000 DA</p>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Code spécial</label>
+                        <input type="text" name="special_code" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <button type="submit" 
+                            class="w-full bg-blue-600 hover:bg-blue-700 text-white py-3 rounded-lg transition">
+                        <i class="fas fa-plus mr-2"></i>Ajouter l'entreprise
+                    </button>
+                </form>
+            </div>
+            
+            <!-- Ajouter un administrateur -->
+            <div class="bg-white border border-gray-200 rounded-lg p-6">
+                <h2 class="text-xl font-bold text-gray-800 mb-4">
+                    <i class="fas fa-user-plus text-green-500 mr-2"></i>
+                    Ajouter un Administrateur
+                </h2>
+                <form method="POST" class="space-y-4">
+                    <input type="hidden" name="add_admin" value="1">
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom *</label>
+                            <input type="text" name="nom" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom *</label>
+                            <input type="text" name="prenom" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Entreprise *</label>
+                        <select name="company_id" required 
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Sélectionnez une entreprise</option>
+                            <?php
+                            $companies = $db->query("SELECT * FROM company ORDER BY c_name");
+                            while ($company = $companies->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $company['company_id']; ?>">
+                                    <?php echo htmlspecialchars($company['c_name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Âge * (min 24)</label>
+                            <input type="number" name="age" min="24" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Salaire (DA)</label>
+                            <input type="number" name="salaire" step="0.01" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya</label>
+                        <select name="wilaya_id" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == 16 ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($wilaya['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email *</label>
+                        <input type="email" name="email" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Mot de passe *</label>
+                        <input type="password" name="password" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Téléphone</label>
+                            <input type="tel" name="numero_tlfn" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nationalité</label>
+                            <input type="text" name="nationalite" value="Algérienne" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <input type="text" name="numero_cart_national" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <button type="submit" 
+                            class="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-lg transition">
+                        <i class="fas fa-user-plus mr-2"></i>Ajouter l'administrateur
+                    </button>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Liste des entreprises -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-list text-gray-500 mr-2"></i>
+                Liste des Entreprises
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border border-gray-300 px-4 py-2 text-left">ID</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Nom</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Frais Mensuel</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Code Spécial</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Administrateurs</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Agents</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $companies = $db->query("SELECT * FROM company ORDER BY company_id");
+                        while ($company = $companies->fetch_assoc()):
+                            $admin_count = $db->query("SELECT COUNT(*) as count FROM administrator WHERE company_id = {$company['company_id']}")->fetch_assoc();
+                            $agent_count = $db->query("SELECT COUNT(*) as count FROM agent WHERE company_id = {$company['company_id']}")->fetch_assoc();
+                        ?>
+                        <tr>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo $company['company_id']; ?></td>
+                            <td class="border border-gray-300 px-4 py-2 font-semibold"><?php echo htmlspecialchars($company['c_name']); ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo number_format($company['frais_mensuel'], 0, ',', ' '); ?> DA</td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($company['special_code'] ?? '-'); ?></td>
+                            <td class="border border-gray-300 px-4 py-2 text-center"><?php echo $admin_count['count']; ?></td>
+                            <td class="border border-gray-300 px-4 py-2 text-center"><?php echo $agent_count['count']; ?></td>
+                        </tr>
+                        <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <?php
+}
+
 /***************************************************************
  * PARTIE 7: PIED DE PAGE ET JAVASCRIPT
  ***************************************************************/
@@ -2405,7 +2721,6 @@ echo '</main>';
                 <h4 class="font-bold mb-4">Liens Rapides</h4>
                 <ul class="space-y-2 text-gray-400">
                     <li><a href="index.php" class="hover:text-white">Accueil</a></li>
-                    <li><a href="index.php?page=register" class="hover:text-white">Inscription Client</a></li>
                     <li><a href="#" class="hover:text-white">Conditions générales</a></li>
                 </ul>
             </div>
