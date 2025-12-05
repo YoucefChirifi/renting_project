@@ -636,6 +636,136 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['add_admin']) && $auth-
     }
 }
 
+// Traiter la mise à jour d'entreprise par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_company']) && $auth->getUserRole() == 'owner') {
+    $company_id = $_POST['company_id'] ?? 0;
+    $c_name = $_POST['c_name'] ?? '';
+    $frais_mensuel = $_POST['frais_mensuel'] ?? 0;
+    $special_code = $_POST['special_code'] ?? '';
+    
+    if ($company_id > 0 && $c_name && $frais_mensuel >= 30000 && $frais_mensuel <= 150000) {
+        $stmt = $db->prepare("UPDATE company SET c_name=?, frais_mensuel=?, special_code=? WHERE company_id=?");
+        $stmt->bind_param("sdsi", $c_name, $frais_mensuel, $special_code, $company_id);
+        if ($stmt->execute()) {
+            $company_success = "Entreprise mise à jour avec succès!";
+        } else {
+            $company_error = "Erreur lors de la mise à jour de l'entreprise.";
+        }
+    } else {
+        $company_error = "Données invalides.";
+    }
+}
+
+// Traiter la suppression d'entreprise par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_company']) && $auth->getUserRole() == 'owner') {
+    $company_id = $_POST['company_id'] ?? 0;
+    
+    if ($company_id > 0) {
+        // Vérifier s'il y a des données liées
+        $check = $db->query("SELECT COUNT(*) as count FROM (SELECT id FROM administrator WHERE company_id = $company_id UNION ALL SELECT id FROM agent WHERE company_id = $company_id UNION ALL SELECT id FROM client WHERE company_id = $company_id UNION ALL SELECT id_car FROM car WHERE company_id = $company_id) as t")->fetch_assoc();
+        
+        if ($check['count'] > 0) {
+            $company_error = "Impossible de supprimer l'entreprise car elle contient des données liées (administrateurs, agents, clients ou voitures).";
+        } else {
+            $stmt = $db->prepare("DELETE FROM company WHERE company_id=?");
+            $stmt->bind_param("i", $company_id);
+            if ($stmt->execute()) {
+                $company_success = "Entreprise supprimée avec succès!";
+            } else {
+                $company_error = "Erreur lors de la suppression de l'entreprise.";
+            }
+        }
+    }
+}
+
+// Traiter la mise à jour d'administrateur par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_admin']) && $auth->getUserRole() == 'owner') {
+    $admin_id = $_POST['admin_id'] ?? 0;
+    $nom = $_POST['nom'] ?? '';
+    $prenom = $_POST['prenom'] ?? '';
+    $age = $_POST['age'] ?? 0;
+    $numero_tlfn = $_POST['numero_tlfn'] ?? '';
+    $nationalite = $_POST['nationalite'] ?? '';
+    $numero_cart_national = $_POST['numero_cart_national'] ?? '';
+    $wilaya_id = $_POST['wilaya_id'] ?? 16;
+    $salaire = $_POST['salaire'] ?? 0;
+    $company_id = $_POST['company_id'] ?? 0;
+    $email = $_POST['email'] ?? '';
+    $password = $_POST['password'] ?? '';
+    
+    if ($admin_id > 0 && $nom && $prenom && $age >= 24 && $email && $company_id > 0) {
+        $password_update = '';
+        $types = "ssissssdissi";
+        $values = [$nom, $prenom, $age, $numero_tlfn, $nationalite, $numero_cart_national, $wilaya_id, $salaire, $company_id, $email, $admin_id];
+        
+        if (!empty($password)) {
+            $password_update = ", password=?";
+            $types .= "s";
+            $values[] = password_hash($password, PASSWORD_DEFAULT);
+        }
+        
+        $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, company_id=?, email=?$password_update 
+                             WHERE id=?");
+        $stmt->bind_param($types, ...$values);
+        if ($stmt->execute()) {
+            $admin_success = "Administrateur mis à jour avec succès!";
+        } else {
+            $admin_error = "Erreur lors de la mise à jour de l'administrateur.";
+        }
+    } else {
+        $admin_error = "Données invalides.";
+    }
+}
+
+// Traiter la suppression d'administrateur par le propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_admin']) && $auth->getUserRole() == 'owner') {
+    $admin_id = $_POST['admin_id'] ?? 0;
+    
+    if ($admin_id > 0) {
+        $stmt = $db->prepare("DELETE FROM administrator WHERE id=?");
+        $stmt->bind_param("i", $admin_id);
+        if ($stmt->execute()) {
+            $admin_success = "Administrateur supprimé avec succès!";
+        } else {
+            $admin_error = "Erreur lors de la suppression de l'administrateur.";
+        }
+    }
+}
+
+// Traiter la mise à jour du profil propriétaire
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_owner_profile']) && $auth->getUserRole() == 'owner') {
+    $owner_id = $auth->getUserId();
+    $nom = $_POST['nom'] ?? '';
+    $prenom = $_POST['prenom'] ?? '';
+    $email = $_POST['email'] ?? '';
+    $password = $_POST['password'] ?? '';
+    
+    if ($nom && $prenom && $email) {
+        $password_update = '';
+        $types = "sssi";
+        $values = [$nom, $prenom, $email, $owner_id];
+        
+        if (!empty($password)) {
+            $password_update = ", password=?";
+            $types .= "s";
+            $values[] = password_hash($password, PASSWORD_DEFAULT);
+        }
+        
+        $stmt = $db->prepare("UPDATE owner SET nom=?, prenom=?, email=?$password_update WHERE id=?");
+        $stmt->bind_param($types, ...$values);
+        if ($stmt->execute()) {
+            $_SESSION['user_name'] = $prenom . ' ' . $nom;
+            $_SESSION['user_email'] = $email;
+            $owner_profile_success = "Profil mis à jour avec succès!";
+        } else {
+            $owner_profile_error = "Erreur lors de la mise à jour du profil.";
+        }
+    } else {
+        $owner_profile_error = "Veuillez remplir tous les champs obligatoires.";
+    }
+}
+
 // Déterminer la page à afficher
 $page = 'home';
 if (isset($_GET['page'])) {
@@ -746,7 +876,7 @@ function displayHeader($title = "DZLocation - Location de Voitures") {
 }
 
 // Fonction pour afficher la navigation
-function displayNavigation($auth, $app) {
+function displayNavigation($auth, $app, $db) {
     ?>
     <nav class="bg-white shadow-lg">
         <div class="container mx-auto px-4">
@@ -762,14 +892,28 @@ function displayNavigation($auth, $app) {
                 </div>
                 
                 <div class="flex items-center space-x-4">
-                    <?php if ($auth->isLoggedIn()): ?>
+                    <?php if ($auth->isLoggedIn()): 
+                        $role = $_SESSION['user_role'];
+                        $company_name = '';
+                        if ($role != 'owner' && isset($_SESSION['company_id']) && $_SESSION['company_id'] > 0) {
+                            $company_result = $db->query("SELECT c_name FROM company WHERE company_id = {$_SESSION['company_id']}");
+                            if ($company_result && $company_result->num_rows > 0) {
+                                $company_name = $company_result->fetch_assoc()['c_name'];
+                            }
+                        }
+                    ?>
+                        <?php if ($company_name): ?>
+                        <span class="text-gray-600 text-sm">
+                            <i class="fas fa-building mr-1"></i>
+                            <?php echo htmlspecialchars($company_name); ?>
+                        </span>
+                        <?php endif; ?>
                         <span class="text-gray-700">
                             <i class="fas fa-user mr-1"></i>
                             <?php echo htmlspecialchars($_SESSION['user_name']); ?>
                         </span>
                         <span class="px-3 py-1 rounded-full text-sm 
                             <?php 
-                            $role = $_SESSION['user_role'];
                             echo $role == 'owner' ? 'bg-yellow-100 text-yellow-800' :
                                  ($role == 'administrator' ? 'bg-purple-100 text-purple-800' : 
                                   ($role == 'agent' ? 'bg-blue-100 text-blue-800' : 'bg-green-100 text-green-800')); 
@@ -799,7 +943,7 @@ function displayNavigation($auth, $app) {
 displayHeader();
 
 // Afficher la navigation
-displayNavigation($auth, $app);
+displayNavigation($auth, $app, $db);
 
 // Contenu principal
 echo '<main class="container mx-auto px-4 py-8">';
@@ -1592,9 +1736,72 @@ function displayAgentDashboard($auth, $app, $db) {
                         }
                     }
                     break;
+                    
+                case 'update_client':
+                    if (isset($_POST['client_id']) && $_POST['age'] >= 24) {
+                        $stmt = $db->prepare("UPDATE client SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=? 
+                                             WHERE id=? AND company_id=?");
+                        $stmt->bind_param("ssissssisi",
+                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
+                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
+                            $_POST['email'], $_POST['client_id'], $company_id
+                        );
+                        if ($stmt->execute()) {
+                            $success = "Client mis à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour";
+                        }
+                    }
+                    break;
+                    
+                case 'delete_client':
+                    if (isset($_POST['client_id'])) {
+                        $stmt = $db->prepare("DELETE FROM client WHERE id=? AND company_id=?");
+                        $stmt->bind_param("ii", $_POST['client_id'], $company_id);
+                        if ($stmt->execute()) {
+                            $success = "Client supprimé avec succès";
+                        } else {
+                            $error = "Erreur lors de la suppression";
+                        }
+                    }
+                    break;
+                    
+                case 'update_profile':
+                    if ($_POST['age'] >= 24) {
+                        $password_update = '';
+                        $params = [];
+                        $types = "ssissssii";
+                        $values = [
+                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
+                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
+                            $_POST['email'], $agent_id
+                        ];
+                        
+                        if (!empty($_POST['password'])) {
+                            $password_update = ", password=?";
+                            $types .= "s";
+                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        }
+                        
+                        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=?$password_update 
+                                             WHERE id=?");
+                        $stmt->bind_param($types, ...$values);
+                        if ($stmt->execute()) {
+                            $_SESSION['user_name'] = $_POST['prenom'] . ' ' . $_POST['nom'];
+                            $success = "Profil mis à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour";
+                        }
+                    }
+                    break;
             }
         }
     }
+    
+    // Obtenir les informations de l'agent
+    $agent_info = $db->query("SELECT * FROM agent WHERE id = $agent_id")->fetch_assoc();
     
     // Obtenir les statistiques
     $total_clients = $db->query("SELECT COUNT(*) as count FROM client WHERE company_id = $company_id")->fetch_assoc();
@@ -1725,6 +1932,7 @@ function displayAgentDashboard($auth, $app, $db) {
                                 <th class="px-4 py-3 text-left">Téléphone</th>
                                 <th class="px-4 py-3 text-left">Wilaya</th>
                                 <th class="px-4 py-3 text-left">Statut</th>
+                                <th class="px-4 py-3 text-left">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
@@ -1743,6 +1951,21 @@ function displayAgentDashboard($auth, $app, $db) {
                                               ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
                                         <?php echo ucfirst($client['status']); ?>
                                     </span>
+                                </td>
+                                <td class="px-4 py-3">
+                                    <div class="flex space-x-2">
+                                        <button onclick="editClient(<?php echo htmlspecialchars(json_encode($client)); ?>)" 
+                                                class="text-blue-600 hover:text-blue-800">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce client?');">
+                                            <input type="hidden" name="action" value="delete_client">
+                                            <input type="hidden" name="client_id" value="<?php echo $client['id']; ?>">
+                                            <button type="submit" class="text-red-600 hover:text-red-800">
+                                                <i class="fas fa-trash"></i>
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -1907,9 +2130,226 @@ function displayAgentDashboard($auth, $app, $db) {
         </div>
     </div>
     
+    <!-- Section Profil Agent -->
+    <div class="mt-8 bg-white rounded-xl shadow-lg p-6">
+        <div class="flex justify-between items-center mb-6">
+            <h2 class="text-2xl font-bold text-gray-800">
+                <i class="fas fa-user-edit mr-2"></i>Mon Profil
+            </h2>
+            <button onclick="showEditProfileForm()" 
+                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                <i class="fas fa-edit mr-2"></i>Modifier
+            </button>
+        </div>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div><strong>Nom:</strong> <?php echo htmlspecialchars($agent_info['nom']); ?></div>
+            <div><strong>Prénom:</strong> <?php echo htmlspecialchars($agent_info['prenom']); ?></div>
+            <div><strong>Email:</strong> <?php echo htmlspecialchars($agent_info['email']); ?></div>
+            <div><strong>Âge:</strong> <?php echo $agent_info['age']; ?></div>
+            <div><strong>Téléphone:</strong> <?php echo htmlspecialchars($agent_info['numero_tlfn']); ?></div>
+            <div><strong>Salaire:</strong> <?php echo number_format($agent_info['salaire'], 0, ',', ' '); ?> DA</div>
+        </div>
+    </div>
+    
+    <!-- Modal d'édition de client -->
+    <div id="editClientModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier un Client</h3>
+                <button onclick="closeModal('editClientModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="action" value="update_client">
+                <input type="hidden" name="client_id" id="edit_client_id">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom</label>
+                            <input type="text" name="nom" id="edit_client_nom" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom</label>
+                            <input type="text" name="prenom" id="edit_client_prenom" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
+                        <input type="number" name="age" id="edit_client_age" min="24" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Téléphone</label>
+                        <input type="tel" name="numero_tlfn" id="edit_client_tel" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nationalité</label>
+                        <input type="text" name="nationalite" id="edit_client_nationalite" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <input type="text" name="numero_cart_national" id="edit_client_carte" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya</label>
+                        <select name="wilaya_id" id="edit_client_wilaya" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="">Sélectionnez une wilaya</option>
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email</label>
+                        <input type="email" name="email" id="edit_client_email" required
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editClientModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal d'édition de profil agent -->
+    <div id="editProfileModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
+                <button onclick="closeModal('editProfileModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="action" value="update_profile">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom</label>
+                            <input type="text" name="nom" value="<?php echo htmlspecialchars($agent_info['nom']); ?>" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom</label>
+                            <input type="text" name="prenom" value="<?php echo htmlspecialchars($agent_info['prenom']); ?>" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
+                        <input type="number" name="age" value="<?php echo $agent_info['age']; ?>" min="24" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Téléphone</label>
+                        <input type="tel" name="numero_tlfn" value="<?php echo htmlspecialchars($agent_info['numero_tlfn']); ?>" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nationalité</label>
+                        <input type="text" name="nationalite" value="<?php echo htmlspecialchars($agent_info['nationalite']); ?>" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <input type="text" name="numero_cart_national" value="<?php echo htmlspecialchars($agent_info['numero_cart_national']); ?>" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya</label>
+                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == $agent_info['wilaya_id'] ? 'selected' : ''; ?>>
+                                    <?php echo htmlspecialchars($wilaya['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email</label>
+                        <input type="email" name="email" value="<?php echo htmlspecialchars($agent_info['email']); ?>" required
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                        <input type="password" name="password" 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editProfileModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script>
     function showAddClientForm() {
         document.getElementById('addClientModal').style.display = 'block';
+    }
+    
+    function showEditProfileForm() {
+        document.getElementById('editProfileModal').style.display = 'block';
+    }
+    
+    function editClient(client) {
+        document.getElementById('edit_client_id').value = client.id;
+        document.getElementById('edit_client_nom').value = client.nom;
+        document.getElementById('edit_client_prenom').value = client.prenom;
+        document.getElementById('edit_client_age').value = client.age;
+        document.getElementById('edit_client_tel').value = client.numero_tlfn;
+        document.getElementById('edit_client_nationalite').value = client.nationalite;
+        document.getElementById('edit_client_carte').value = client.numero_cart_national;
+        document.getElementById('edit_client_wilaya').value = client.wilaya_id;
+        document.getElementById('edit_client_email').value = client.email;
+        document.getElementById('editClientModal').style.display = 'block';
     }
     
     function closeModal(modalId) {
@@ -1972,9 +2412,112 @@ function displayAdminDashboard($auth, $app, $db) {
                         $error = "Erreur lors de l'ajout de l'agent";
                     }
                     break;
+                    
+                case 'update_agent':
+                    if (isset($_POST['agent_id']) && $_POST['age'] >= 24) {
+                        $password_update = '';
+                        $params = [];
+                        $types = "ssissssdii";
+                        $values = [
+                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
+                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
+                            $_POST['salaire'], $_POST['email'], $_POST['agent_id'], $company_id
+                        ];
+                        
+                        if (!empty($_POST['password'])) {
+                            $password_update = ", password=?";
+                            $types .= "s";
+                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        }
+                        
+                        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email=?$password_update 
+                                             WHERE id=? AND company_id=?");
+                        $stmt->bind_param($types, ...$values);
+                        if ($stmt->execute()) {
+                            $success = "Agent mis à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour";
+                        }
+                    }
+                    break;
+                    
+                case 'delete_agent':
+                    if (isset($_POST['agent_id'])) {
+                        $stmt = $db->prepare("DELETE FROM agent WHERE id=? AND company_id=?");
+                        $stmt->bind_param("ii", $_POST['agent_id'], $company_id);
+                        if ($stmt->execute()) {
+                            $success = "Agent supprimé avec succès";
+                        } else {
+                            $error = "Erreur lors de la suppression";
+                        }
+                    }
+                    break;
+                    
+                case 'update_car':
+                    if (isset($_POST['car_id'])) {
+                        $stmt = $db->prepare("UPDATE car SET marque=?, model=?, color=?, annee=?, 
+                                             category=?, prix_day=?, status_voiture=?, voiture_work=? 
+                                             WHERE id_car=? AND company_id=?");
+                        $stmt->bind_param("sssiidissi",
+                            $_POST['marque'], $_POST['model'], $_POST['color'], $_POST['annee'],
+                            $_POST['category'], $_POST['prix_day'], $_POST['status_voiture'],
+                            $_POST['voiture_work'], $_POST['car_id'], $company_id
+                        );
+                        if ($stmt->execute()) {
+                            $success = "Voiture mise à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour";
+                        }
+                    }
+                    break;
+                    
+                case 'delete_car':
+                    if (isset($_POST['car_id'])) {
+                        $stmt = $db->prepare("DELETE FROM car WHERE id_car=? AND company_id=?");
+                        $stmt->bind_param("ii", $_POST['car_id'], $company_id);
+                        if ($stmt->execute()) {
+                            $success = "Voiture supprimée avec succès";
+                        } else {
+                            $error = "Erreur lors de la suppression";
+                        }
+                    }
+                    break;
+                    
+                case 'update_profile':
+                    if ($_POST['age'] >= 24) {
+                        $password_update = '';
+                        $types = "ssissssdii";
+                        $values = [
+                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
+                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
+                            $_POST['salaire'], $_POST['email'], $admin_id
+                        ];
+                        
+                        if (!empty($_POST['password'])) {
+                            $password_update = ", password=?";
+                            $types .= "s";
+                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        }
+                        
+                        $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email=?$password_update 
+                                             WHERE id=?");
+                        $stmt->bind_param($types, ...$values);
+                        if ($stmt->execute()) {
+                            $_SESSION['user_name'] = $_POST['prenom'] . ' ' . $_POST['nom'];
+                            $success = "Profil mis à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour";
+                        }
+                    }
+                    break;
             }
         }
     }
+    
+    // Obtenir les informations de l'admin
+    $admin_info = $db->query("SELECT * FROM administrator WHERE id = $admin_id")->fetch_assoc();
     
     // Obtenir les statistiques
     $total_cars = $db->query("SELECT COUNT(*) as count FROM car WHERE company_id = $company_id")->fetch_assoc();
@@ -2108,10 +2651,13 @@ function displayAdminDashboard($auth, $app, $db) {
                                 <th class="px-4 py-3 text-left">Catégorie</th>
                                 <th class="px-4 py-3 text-left">Prix</th>
                                 <th class="px-4 py-3 text-left">Disponibilité</th>
+                                <th class="px-4 py-3 text-left">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
-                            <?php while ($car = $cars->fetch_assoc()): 
+                            <?php 
+                            $cars->data_seek(0); // Reset pointer
+                            while ($car = $cars->fetch_assoc()): 
                                 $categories = $app->getCategories();
                                 $category_name = $categories[$car['category']]['name'];
                             ?>
@@ -2141,6 +2687,20 @@ function displayAdminDashboard($auth, $app, $db) {
                                         <?php echo $car['voiture_work'] == 'disponible' ? 'Disponible' : 'Indisponible'; ?>
                                     </span>
                                 </td>
+                                <td class="px-4 py-3">
+                                    <button onclick="editCar(<?php echo htmlspecialchars(json_encode($car)); ?>)" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
+                                        <i class="fas fa-edit"></i> Modifier
+                                    </button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette voiture?');">
+                                        <input type="hidden" name="action" value="delete_car">
+                                        <input type="hidden" name="car_id" value="<?php echo $car['id_car']; ?>">
+                                        <button type="submit" 
+                                                class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                                            <i class="fas fa-trash"></i> Supprimer
+                                        </button>
+                                    </form>
+                                </td>
                             </tr>
                             <?php endwhile; ?>
                         </tbody>
@@ -2167,10 +2727,13 @@ function displayAdminDashboard($auth, $app, $db) {
                                 <th class="px-4 py-3 text-left">Nom & Prénom</th>
                                 <th class="px-4 py-3 text-left">Téléphone</th>
                                 <th class="px-4 py-3 text-left">Salaire</th>
+                                <th class="px-4 py-3 text-left">Actions</th>
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-gray-200">
-                            <?php while ($agent = $agents->fetch_assoc()): 
+                            <?php 
+                            $agents->data_seek(0); // Reset pointer
+                            while ($agent = $agents->fetch_assoc()): 
                                 $wilaya = $db->query("SELECT name FROM wilaya WHERE id = {$agent['wilaya_id']}")->fetch_assoc();
                             ?>
                             <tr>
@@ -2181,6 +2744,20 @@ function displayAdminDashboard($auth, $app, $db) {
                                 <td class="px-4 py-3"><?php echo htmlspecialchars($agent['numero_tlfn']); ?></td>
                                 <td class="px-4 py-3 font-medium text-green-600">
                                     <?php echo number_format($agent['salaire'], 0, ',', ' '); ?> DA
+                                </td>
+                                <td class="px-4 py-3">
+                                    <button onclick="editAgent(<?php echo htmlspecialchars(json_encode($agent)); ?>)" 
+                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
+                                        <i class="fas fa-edit"></i> Modifier
+                                    </button>
+                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet agent?');">
+                                        <input type="hidden" name="action" value="delete_agent">
+                                        <input type="hidden" name="agent_id" value="<?php echo $agent['id']; ?>">
+                                        <button type="submit" 
+                                                class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                                            <i class="fas fa-trash"></i> Supprimer
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -2401,6 +2978,193 @@ function displayAdminDashboard($auth, $app, $db) {
         </div>
     </div>
     
+    <!-- Modal d'édition de voiture -->
+    <div id="editCarModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier une Voiture</h3>
+                <button onclick="closeModal('editCarModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="action" value="update_car">
+                <input type="hidden" name="car_id" id="edit_car_id">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Marque</label>
+                            <input type="text" name="marque" id="edit_car_marque" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Modèle</label>
+                            <input type="text" name="model" id="edit_car_model" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Couleur</label>
+                            <input type="text" name="color" id="edit_car_color" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Année</label>
+                            <input type="number" name="annee" id="edit_car_annee" required min="2000" max="2025"
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Catégorie</label>
+                        <select name="category" id="edit_car_category" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="">Sélectionnez une catégorie</option>
+                            <option value="1">Économique (4000-6000 DA/jour)</option>
+                            <option value="2">Confort (6000-12000 DA/jour)</option>
+                            <option value="3">Luxe (12000-20000 DA/jour)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Prix par jour (DA)</label>
+                        <input type="number" name="prix_day" id="edit_car_prix" required min="4000" max="20000"
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">État de la voiture</label>
+                        <select name="status_voiture" id="edit_car_status" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="1">Excellent</option>
+                            <option value="2">Entretien</option>
+                            <option value="3">Faible</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Disponibilité</label>
+                        <select name="voiture_work" id="edit_car_work" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="disponible">Disponible</option>
+                            <option value="non disponible">Non disponible</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editCarModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal d'édition d'agent -->
+    <div id="editAgentModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier un Agent</h3>
+                <button onclick="closeModal('editAgentModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="action" value="update_agent">
+                <input type="hidden" name="agent_id" id="edit_agent_id">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom</label>
+                            <input type="text" name="nom" id="edit_agent_nom" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom</label>
+                            <input type="text" name="prenom" id="edit_agent_prenom" required 
+                                   class="w-full px-4 py-2 border rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
+                        <input type="number" name="age" id="edit_agent_age" min="24" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Téléphone</label>
+                        <input type="tel" name="numero_tlfn" id="edit_agent_tel" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nationalité</label>
+                        <input type="text" name="nationalite" id="edit_agent_nationalite" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <input type="text" name="numero_cart_national" id="edit_agent_carte" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya</label>
+                        <select name="wilaya_id" id="edit_agent_wilaya" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="">Sélectionnez une wilaya</option>
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Salaire (DA)</label>
+                        <input type="number" name="salaire" id="edit_agent_salaire" required min="30000" max="150000"
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email</label>
+                        <input type="email" name="email" id="edit_agent_email" required 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                        <input type="password" name="password" id="edit_agent_password" 
+                               class="w-full px-4 py-2 border rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editAgentModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
     <script>
     function showAddCarForm() {
         document.getElementById('addCarModal').style.display = 'block';
@@ -2408,6 +3172,34 @@ function displayAdminDashboard($auth, $app, $db) {
     
     function showAddAgentForm() {
         document.getElementById('addAgentModal').style.display = 'block';
+    }
+    
+    function editCar(car) {
+        document.getElementById('edit_car_id').value = car.id_car;
+        document.getElementById('edit_car_marque').value = car.marque;
+        document.getElementById('edit_car_model').value = car.model;
+        document.getElementById('edit_car_color').value = car.color;
+        document.getElementById('edit_car_annee').value = car.annee;
+        document.getElementById('edit_car_category').value = car.category;
+        document.getElementById('edit_car_prix').value = car.prix_day;
+        document.getElementById('edit_car_status').value = car.status_voiture;
+        document.getElementById('edit_car_work').value = car.voiture_work;
+        document.getElementById('editCarModal').style.display = 'block';
+    }
+    
+    function editAgent(agent) {
+        document.getElementById('edit_agent_id').value = agent.id;
+        document.getElementById('edit_agent_nom').value = agent.nom;
+        document.getElementById('edit_agent_prenom').value = agent.prenom;
+        document.getElementById('edit_agent_age').value = agent.age;
+        document.getElementById('edit_agent_tel').value = agent.numero_tlfn;
+        document.getElementById('edit_agent_nationalite').value = agent.nationalite;
+        document.getElementById('edit_agent_carte').value = agent.numero_cart_national;
+        document.getElementById('edit_agent_wilaya').value = agent.wilaya_id;
+        document.getElementById('edit_agent_salaire').value = agent.salaire;
+        document.getElementById('edit_agent_email').value = agent.email;
+        document.getElementById('edit_agent_password').value = '';
+        document.getElementById('editAgentModal').style.display = 'block';
     }
     
     function closeModal(modalId) {
@@ -2427,6 +3219,9 @@ function displayAdminDashboard($auth, $app, $db) {
 function displayOwnerDashboard($auth, $app, $db) {
     $owner_id = $auth->getUserId();
     
+    // Obtenir les informations du propriétaire
+    $owner_info = $db->query("SELECT * FROM owner WHERE id = $owner_id")->fetch_assoc();
+    
     // Messages
     if (isset($company_success)) {
         echo '<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($company_success) . '</div>';
@@ -2439,6 +3234,12 @@ function displayOwnerDashboard($auth, $app, $db) {
     }
     if (isset($admin_error)) {
         echo '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($admin_error) . '</div>';
+    }
+    if (isset($owner_profile_success)) {
+        echo '<div class="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($owner_profile_success) . '</div>';
+    }
+    if (isset($owner_profile_error)) {
+        echo '<div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-6">' . htmlspecialchars($owner_profile_error) . '</div>';
     }
     ?>
     
@@ -2661,6 +3462,7 @@ function displayOwnerDashboard($auth, $app, $db) {
                             <th class="border border-gray-300 px-4 py-2 text-left">Code Spécial</th>
                             <th class="border border-gray-300 px-4 py-2 text-left">Administrateurs</th>
                             <th class="border border-gray-300 px-4 py-2 text-left">Agents</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Actions</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -2677,13 +3479,358 @@ function displayOwnerDashboard($auth, $app, $db) {
                             <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($company['special_code'] ?? '-'); ?></td>
                             <td class="border border-gray-300 px-4 py-2 text-center"><?php echo $admin_count['count']; ?></td>
                             <td class="border border-gray-300 px-4 py-2 text-center"><?php echo $agent_count['count']; ?></td>
+                            <td class="border border-gray-300 px-4 py-2">
+                                <button onclick="editCompany(<?php echo htmlspecialchars(json_encode($company)); ?>)" 
+                                        class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
+                                    <i class="fas fa-edit"></i> Modifier
+                                </button>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette entreprise?');">
+                                    <input type="hidden" name="delete_company" value="1">
+                                    <input type="hidden" name="company_id" value="<?php echo $company['company_id']; ?>">
+                                    <button type="submit" 
+                                            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                                        <i class="fas fa-trash"></i> Supprimer
+                                    </button>
+                                </form>
+                            </td>
                         </tr>
                         <?php endwhile; ?>
                     </tbody>
                 </table>
             </div>
         </div>
+        
+        <!-- Liste des administrateurs -->
+        <div class="bg-white border border-gray-200 rounded-lg p-6 mt-8">
+            <h2 class="text-xl font-bold text-gray-800 mb-4">
+                <i class="fas fa-user-shield text-gray-500 mr-2"></i>
+                Liste des Administrateurs
+            </h2>
+            <div class="overflow-x-auto">
+                <table class="w-full border-collapse">
+                    <thead>
+                        <tr class="bg-gray-100">
+                            <th class="border border-gray-300 px-4 py-2 text-left">ID</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Nom</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Prénom</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Email</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Entreprise</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Salaire</th>
+                            <th class="border border-gray-300 px-4 py-2 text-left">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php
+                        $admins = $db->query("SELECT a.*, c.c_name as company_name FROM administrator a LEFT JOIN company c ON a.company_id = c.company_id ORDER BY a.id");
+                        while ($admin = $admins->fetch_assoc()):
+                        ?>
+                        <tr>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo $admin['id']; ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($admin['nom']); ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($admin['prenom']); ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($admin['email']); ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo htmlspecialchars($admin['company_name'] ?? '-'); ?></td>
+                            <td class="border border-gray-300 px-4 py-2"><?php echo number_format($admin['salaire'] ?? 0, 0, ',', ' '); ?> DA</td>
+                            <td class="border border-gray-300 px-4 py-2">
+                                <button onclick="editAdmin(<?php echo htmlspecialchars(json_encode($admin)); ?>)" 
+                                        class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
+                                    <i class="fas fa-edit"></i> Modifier
+                                </button>
+                                <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet administrateur?');">
+                                    <input type="hidden" name="delete_admin" value="1">
+                                    <input type="hidden" name="admin_id" value="<?php echo $admin['id']; ?>">
+                                    <button type="submit" 
+                                            class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
+                                        <i class="fas fa-trash"></i> Supprimer
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                        <?php endwhile; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Section Profil Propriétaire -->
+        <div class="mt-8 bg-white border border-gray-200 rounded-lg p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">
+                    <i class="fas fa-user-edit mr-2"></i>Mon Profil
+                </h2>
+                <button onclick="showEditOwnerProfileForm()" 
+                        class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded-lg">
+                    <i class="fas fa-edit mr-2"></i>Modifier
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><strong>Nom:</strong> <?php echo htmlspecialchars($owner_info['nom']); ?></div>
+                <div><strong>Prénom:</strong> <?php echo htmlspecialchars($owner_info['prenom']); ?></div>
+                <div><strong>Email:</strong> <?php echo htmlspecialchars($owner_info['email']); ?></div>
+            </div>
+        </div>
     </div>
+    
+    <!-- Modal d'édition d'entreprise -->
+    <div id="editCompanyModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier une Entreprise</h3>
+                <button onclick="closeModal('editCompanyModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="update_company" value="1">
+                <input type="hidden" name="company_id" id="edit_company_id">
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nom de l'entreprise *</label>
+                        <input type="text" name="c_name" id="edit_company_name" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Frais mensuel (DA) *</label>
+                        <input type="number" name="frais_mensuel" id="edit_company_frais" min="30000" max="150000" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Code spécial</label>
+                        <input type="text" name="special_code" id="edit_company_code" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editCompanyModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal d'édition d'administrateur -->
+    <div id="editAdminModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier un Administrateur</h3>
+                <button onclick="closeModal('editAdminModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="update_admin" value="1">
+                <input type="hidden" name="admin_id" id="edit_admin_id">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom *</label>
+                            <input type="text" name="nom" id="edit_admin_nom" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom *</label>
+                            <input type="text" name="prenom" id="edit_admin_prenom" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Entreprise *</label>
+                        <select name="company_id" id="edit_admin_company" required 
+                                class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <option value="">Sélectionnez une entreprise</option>
+                            <?php
+                            $companies = $db->query("SELECT * FROM company ORDER BY c_name");
+                            while ($company = $companies->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $company['company_id']; ?>">
+                                    <?php echo htmlspecialchars($company['c_name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Âge * (min 24)</label>
+                            <input type="number" name="age" id="edit_admin_age" min="24" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Salaire (DA)</label>
+                            <input type="number" name="salaire" id="edit_admin_salaire" step="0.01" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya</label>
+                        <select name="wilaya_id" id="edit_admin_wilaya" class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>">
+                                    <?php echo htmlspecialchars($wilaya['name']); ?>
+                                </option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email *</label>
+                        <input type="email" name="email" id="edit_admin_email" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                        <input type="password" name="password" id="edit_admin_password" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Téléphone</label>
+                            <input type="tel" name="numero_tlfn" id="edit_admin_tel" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nationalité</label>
+                            <input type="text" name="nationalite" id="edit_admin_nationalite" 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <input type="text" name="numero_cart_national" id="edit_admin_carte" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editAdminModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <!-- Modal d'édition de profil propriétaire -->
+    <div id="editOwnerProfileModal" class="modal">
+        <div class="modal-content fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
+                <button onclick="closeModal('editOwnerProfileModal')" class="text-gray-500 hover:text-gray-700">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form method="POST">
+                <input type="hidden" name="update_owner_profile" value="1">
+                
+                <div class="space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nom *</label>
+                            <input type="text" name="nom" id="edit_owner_nom" value="<?php echo htmlspecialchars($owner_info['nom']); ?>" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                        <div>
+                            <label class="block text-gray-700 mb-2">Prénom *</label>
+                            <input type="text" name="prenom" id="edit_owner_prenom" value="<?php echo htmlspecialchars($owner_info['prenom']); ?>" required 
+                                   class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Email *</label>
+                        <input type="email" name="email" id="edit_owner_email" value="<?php echo htmlspecialchars($owner_info['email']); ?>" required 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                        <input type="password" name="password" id="edit_owner_password" 
+                               class="w-full px-4 py-2 border border-gray-300 rounded-lg">
+                    </div>
+                </div>
+                
+                <div class="flex justify-end space-x-3 mt-6">
+                    <button type="button" onclick="closeModal('editOwnerProfileModal')" 
+                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                        Annuler
+                    </button>
+                    <button type="submit" 
+                            class="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700">
+                        Mettre à jour
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <script>
+    function editCompany(company) {
+        document.getElementById('edit_company_id').value = company.company_id;
+        document.getElementById('edit_company_name').value = company.c_name;
+        document.getElementById('edit_company_frais').value = company.frais_mensuel;
+        document.getElementById('edit_company_code').value = company.special_code || '';
+        document.getElementById('editCompanyModal').style.display = 'block';
+    }
+    
+    function editAdmin(admin) {
+        document.getElementById('edit_admin_id').value = admin.id;
+        document.getElementById('edit_admin_nom').value = admin.nom;
+        document.getElementById('edit_admin_prenom').value = admin.prenom;
+        document.getElementById('edit_admin_email').value = admin.email;
+        document.getElementById('edit_admin_company').value = admin.company_id;
+        document.getElementById('edit_admin_age').value = admin.age;
+        document.getElementById('edit_admin_salaire').value = admin.salaire || '';
+        document.getElementById('edit_admin_wilaya').value = admin.wilaya_id || 16;
+        document.getElementById('edit_admin_tel').value = admin.numero_tlfn || '';
+        document.getElementById('edit_admin_nationalite').value = admin.nationalite || '';
+        document.getElementById('edit_admin_carte').value = admin.numero_cart_national || '';
+        document.getElementById('edit_admin_password').value = '';
+        document.getElementById('editAdminModal').style.display = 'block';
+    }
+    
+    function showEditOwnerProfileForm() {
+        document.getElementById('editOwnerProfileModal').style.display = 'block';
+    }
+    
+    function closeModal(modalId) {
+        document.getElementById(modalId).style.display = 'none';
+    }
+    
+    // Fermer les modales en cliquant à l'extérieur
+    window.onclick = function(event) {
+        if (event.target.classList.contains('modal')) {
+            event.target.style.display = 'none';
+        }
+    }
+    </script>
     <?php
 }
 
