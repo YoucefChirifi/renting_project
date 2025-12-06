@@ -1,7 +1,7 @@
 <?php
 /***************************************************************
  * DZLocation - Système de Location de Voitures en Algérie
- * Application complète avec 3 rôles (Client, Agent, Administrateur)
+ * Application complète avec 4 rôles (Client, Agent, Administrateur,Owner)
  * Langue: Français - Devise: DA
  ***************************************************************/
 
@@ -20,7 +20,7 @@ class Database {
     private $host = "localhost";
     private $user = "root";
     private $pass = "";
-    private $dbname = "car_rental_algeria";
+    private $dbname = "Youcef_cherifi_agency";
     public $conn;
     
     public function __construct() {
@@ -240,6 +240,25 @@ class Database {
                                   numero_cart_national, wilaya_id, salaire, company_id, email, password) 
                                   VALUES ('Agent', 'Principal', 28, '0555000001', 'Algérienne', 
                                   '0000000000000001', 16, 80000, $company_id, '$agent_email', '$hashed_password')");
+                
+                // Créer des clients pour chaque entreprise (3 clients par entreprise)
+                $client_names = [
+                    ['nom' => 'Benali', 'prenom' => 'Ahmed', 'wilaya' => 16],
+                    ['nom' => 'Kadri', 'prenom' => 'Fatima', 'wilaya' => 31],
+                    ['nom' => 'Bouaziz', 'prenom' => 'Mohamed', 'wilaya' => 25]
+                ];
+                
+                foreach ($client_names as $idx => $client_data) {
+                    $client_email = strtolower(str_replace(' ', '', $comp['name'])) . '.client' . ($idx + 1) . '@client.com';
+                    $client_carte = '100000000000000' . ($idx + 1);
+                    $client_tel = '05550000' . str_pad($idx + 10, 2, '0', STR_PAD_LEFT);
+                    $this->conn->query("INSERT INTO client (nom, prenom, age, numero_tlfn, nationalite, 
+                                      numero_cart_national, wilaya_id, status, company_id, email, password) 
+                                      VALUES ('{$client_data['nom']}', '{$client_data['prenom']}', 25, 
+                                      '$client_tel', 'Algérienne', 
+                                      '$client_carte', {$client_data['wilaya']}, 'non reserve', $company_id, 
+                                      '$client_email', '$hashed_password')");
+                }
             }
         }
     }
@@ -694,29 +713,39 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_admin']) && $au
     $password = $_POST['password'] ?? '';
     
     if ($admin_id > 0 && $nom && $prenom && $age >= 24 && $email && $company_id > 0) {
-        $password_update = '';
-        $types = "ssissssdissi";
-        $values = [$nom, $prenom, $age, $numero_tlfn, $nationalite, $numero_cart_national, $wilaya_id, $salaire, $company_id, $email, $admin_id];
-        
-        if (!empty($password)) {
-            $password_update = ", password=?";
-            $types .= "s";
-            $values[] = password_hash($password, PASSWORD_DEFAULT);
+        if (empty($password)) {
+            // Update without password
+            $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                 nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, company_id=?, email=? 
+                                 WHERE id=?");
+            $stmt->bind_param("ssisssidisi", 
+                $nom, $prenom, $age, $numero_tlfn, 
+                $nationalite, $numero_cart_national, $wilaya_id, 
+                $salaire, $company_id, $email, $admin_id
+            );
+        } else {
+            // Update with password
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+            $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                 nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, company_id=?, email=?, password=? 
+                                 WHERE id=?");
+            $stmt->bind_param("ssisssidissi", 
+                $nom, $prenom, $age, $numero_tlfn, 
+                $nationalite, $numero_cart_national, $wilaya_id, 
+                $salaire, $company_id, $email, $hashed_password, $admin_id
+            );
         }
         
-        $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
-                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, company_id=?, email=?$password_update 
-                             WHERE id=?");
-        $stmt->bind_param($types, ...$values);
         if ($stmt->execute()) {
             $admin_success = "Administrateur mis à jour avec succès!";
         } else {
-            $admin_error = "Erreur lors de la mise à jour de l'administrateur.";
+            $admin_error = "Erreur lors de la mise à jour de l'administrateur: " . $stmt->error;
         }
     } else {
-        $admin_error = "Données invalides.";
+        $admin_error = "Données invalides. Veuillez vérifier tous les champs obligatoires.";
     }
 }
+
 
 // Traiter la suppression d'administrateur par le propriétaire
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_admin']) && $auth->getUserRole() == 'owner') {
@@ -891,23 +920,35 @@ function displayNavigation($auth, $app, $db) {
                     <span class="ml-2 text-sm text-gray-600">Algérie</span>
                 </div>
                 
+                <!-- Company Name - Centered and Bold -->
+                <?php if ($auth->isLoggedIn()): 
+                    $role = $_SESSION['user_role'];
+                    $company_name = '';
+                    if ($role != 'owner' && isset($_SESSION['company_id']) && $_SESSION['company_id'] > 0) {
+                        $company_result = $db->query("SELECT c_name FROM company WHERE company_id = {$_SESSION['company_id']}");
+                        if ($company_result && $company_result->num_rows > 0) {
+                            $company_name = $company_result->fetch_assoc()['c_name'];
+                        }
+                    }
+                ?>
+                    <?php if ($company_name): ?>
+                    <div class="flex-1 text-center">
+                        <h2 class="text-2xl font-extrabold text-blue-700 tracking-wide">
+                            <i class="fas fa-building mr-2"></i>
+                            <?php echo htmlspecialchars($company_name); ?>
+                        </h2>
+                    </div>
+                    <?php else: ?>
+                    <div class="flex-1"></div>
+                    <?php endif; ?>
+                <?php else: ?>
+                    <div class="flex-1"></div>
+                <?php endif; ?>
+                
                 <div class="flex items-center space-x-4">
                     <?php if ($auth->isLoggedIn()): 
                         $role = $_SESSION['user_role'];
-                        $company_name = '';
-                        if ($role != 'owner' && isset($_SESSION['company_id']) && $_SESSION['company_id'] > 0) {
-                            $company_result = $db->query("SELECT c_name FROM company WHERE company_id = {$_SESSION['company_id']}");
-                            if ($company_result && $company_result->num_rows > 0) {
-                                $company_name = $company_result->fetch_assoc()['c_name'];
-                            }
-                        }
                     ?>
-                        <?php if ($company_name): ?>
-                        <span class="text-gray-600 text-sm">
-                            <i class="fas fa-building mr-1"></i>
-                            <?php echo htmlspecialchars($company_name); ?>
-                        </span>
-                        <?php endif; ?>
                         <span class="text-gray-700">
                             <i class="fas fa-user mr-1"></i>
                             <?php echo htmlspecialchars($_SESSION['user_name']); ?>
@@ -1101,64 +1142,6 @@ function displayHomePage($auth, $app, $db) {
                 </form>
             </div>
             <?php endif; ?>
-            
-            <!-- Voitures disponibles -->
-            <div class="mt-12">
-                <h2 class="text-2xl font-bold text-gray-800 mb-6">Voitures Disponibles</h2>
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    <?php
-                    $cars = $app->getAvailableCars();
-                    $count = 0;
-                    while ($car = $cars->fetch_assoc()):
-                        if ($count >= 6) break;
-                        $count++;
-                        $category_info = $app->getCategories()[$car['category']];
-                    ?>
-                    <div class="bg-white rounded-xl shadow-md overflow-hidden card-hover car-category-<?php echo $car['category']; ?>">
-                        <div class="p-6">
-                            <div class="flex justify-between items-start mb-4">
-                                <div>
-                                    <h3 class="text-lg font-bold text-gray-800"><?php echo htmlspecialchars($car['marque'] . ' ' . $car['model']); ?></h3>
-                                    <p class="text-gray-600">Année: <?php echo $car['annee']; ?></p>
-                                </div>
-                                <span class="px-3 py-1 rounded-full text-sm 
-                                    <?php echo $car['category'] == 1 ? 'bg-green-100 text-green-800' : 
-                                          ($car['category'] == 2 ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'); ?>">
-                                    Catégorie <?php echo $car['category']; ?>
-                                </span>
-                            </div>
-                            
-                            <div class="mb-4">
-                                <p class="text-gray-700">
-                                    <i class="fas fa-palette text-gray-400 mr-2"></i>
-                                    Couleur: <?php echo htmlspecialchars($car['color']); ?>
-                                </p>
-                                <p class="text-gray-700">
-                                    <i class="fas fa-id-card text-gray-400 mr-2"></i>
-                                    Plaque: <?php echo htmlspecialchars($car['matricule']); ?>
-                                </p>
-                            </div>
-                            
-                            <div class="flex justify-between items-center">
-                                <span class="text-2xl font-bold text-blue-600">
-                                    <?php echo number_format($car['prix_day'], 0, ',', ' '); ?> DA/jour
-                                </span>
-                                <span class="px-3 py-1 rounded-full text-sm bg-green-100 text-green-800">
-                                    <i class="fas fa-check mr-1"></i>Disponible
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-                    <?php endwhile; ?>
-                    
-                    <?php if ($count == 0): ?>
-                    <div class="md:col-span-3 text-center py-8 text-gray-500">
-                        <i class="fas fa-car text-3xl mb-3"></i>
-                        <p>Aucune voiture disponible pour le moment</p>
-                    </div>
-                    <?php endif; ?>
-                </div>
-            </div>
         </div>
     </div>
     
@@ -1739,18 +1722,37 @@ function displayAgentDashboard($auth, $app, $db) {
                     
                 case 'update_client':
                     if (isset($_POST['client_id']) && $_POST['age'] >= 24) {
-                        $stmt = $db->prepare("UPDATE client SET nom=?, prenom=?, age=?, numero_tlfn=?, 
-                                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=? 
-                                             WHERE id=? AND company_id=?");
-                        $stmt->bind_param("ssissssisi",
-                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
-                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
-                            $_POST['email'], $_POST['client_id'], $company_id
-                        );
-                        if ($stmt->execute()) {
-                            $success = "Client mis à jour avec succès";
+                        // Valider et nettoyer l'email
+                        $email = trim($_POST['email'] ?? '');
+                        
+                        if (empty($email)) {
+                            $error = "L'email est obligatoire";
+                        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                            $error = "Format d'email invalide";
                         } else {
-                            $error = "Erreur lors de la mise à jour";
+                            // Vérifier si l'email existe déjà pour un autre client
+                            $check_email = $db->prepare("SELECT id FROM client WHERE email = ? AND id != ? AND company_id = ?");
+                            $check_email->bind_param("sii", $email, $_POST['client_id'], $company_id);
+                            $check_email->execute();
+                            $email_result = $check_email->get_result();
+                            
+                            if ($email_result->num_rows > 0) {
+                                $error = "Cet email est déjà utilisé par un autre client";
+                            } else {
+                                $stmt = $db->prepare("UPDATE client SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                                     nationalite=?, numero_cart_national=?, wilaya_id=?, email=? 
+                                                     WHERE id=? AND company_id=?");
+                                $stmt->bind_param("ssissssisi",
+                                    $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
+                                    $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
+                                    $email, $_POST['client_id'], $company_id
+                                );
+                                if ($stmt->execute()) {
+                                    $success = "Client mis à jour avec succès";
+                                } else {
+                                    $error = "Erreur lors de la mise à jour: " . $stmt->error;
+                                }
+                            }
                         }
                     }
                     break;
@@ -2339,19 +2341,20 @@ function displayAgentDashboard($auth, $app, $db) {
         document.getElementById('editProfileModal').style.display = 'block';
     }
     
-    function editClient(client) {
-        document.getElementById('edit_client_id').value = client.id;
-        document.getElementById('edit_client_nom').value = client.nom;
-        document.getElementById('edit_client_prenom').value = client.prenom;
-        document.getElementById('edit_client_age').value = client.age;
-        document.getElementById('edit_client_tel').value = client.numero_tlfn;
-        document.getElementById('edit_client_nationalite').value = client.nationalite;
-        document.getElementById('edit_client_carte').value = client.numero_cart_national;
-        document.getElementById('edit_client_wilaya').value = client.wilaya_id;
-        document.getElementById('edit_client_email').value = client.email;
-        document.getElementById('editClientModal').style.display = 'block';
-    }
-    
+function editClient(client) {
+    document.getElementById('editclientid').value = client.id;
+    document.getElementById('editclientnom').value = client.nom;
+    document.getElementById('editclientprenom').value = client.prenom;
+    document.getElementById('editclientage').value = client.age;
+    document.getElementById('editclienttel').value = client.numerotlfn;
+    document.getElementById('editclientnationalite').value = client.nationalite;
+    document.getElementById('editclientcarte').value = client.numerocartnational;
+    document.getElementById('editclientwilaya').value = client.wilayaid;
+    // FIX: Simple assignment without problematic conditional
+    document.getElementById('editclientemail').value = client.email || '';
+    document.getElementById('editClientModal').style.display = 'block';
+}
+
     function closeModal(modalId) {
         document.getElementById(modalId).style.display = 'none';
     }
@@ -2413,34 +2416,119 @@ function displayAdminDashboard($auth, $app, $db) {
                     }
                     break;
                     
-                case 'update_agent':
-                    if (isset($_POST['agent_id']) && $_POST['age'] >= 24) {
-                        $password_update = '';
-                        $params = [];
-                        $types = "ssissssdii";
-                        $values = [
-                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
-                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
-                            $_POST['salaire'], $_POST['email'], $_POST['agent_id'], $company_id
-                        ];
-                        
-                        if (!empty($_POST['password'])) {
-                            $password_update = ", password=?";
-                            $types .= "s";
-                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        }
-                        
-                        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?, 
-                                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email=?$password_update 
-                                             WHERE id=? AND company_id=?");
-                        $stmt->bind_param($types, ...$values);
-                        if ($stmt->execute()) {
-                            $success = "Agent mis à jour avec succès";
-                        } else {
-                            $error = "Erreur lors de la mise à jour";
-                        }
-                    }
-                    break;
+case 'update_agent':
+    if (isset($_POST['agent_id']) && $_POST['age'] >= 24) {
+        $password_update = '';
+        $types = "ssisssiisii";  // 11 parameters
+        $values = [
+            $_POST['nom'], 
+            $_POST['prenom'], 
+            (int)$_POST['age'], 
+            $_POST['numero_tlfn'],
+            $_POST['nationalite'], 
+            $_POST['numero_cart_national'], 
+            (int)$_POST['wilaya_id'],
+            (float)$_POST['salaire'], 
+            $_POST['email'], 
+            (int)$_POST['agent_id'], 
+            (int)$company_id
+        ];
+        
+        if (!empty($_POST['password'])) {
+            $password_update = ", password=?";
+            $types .= "s";  // Now 12 parameters total
+            // Insert password BEFORE WHERE clause parameters
+            array_splice($values, 9, 0, password_hash($_POST['password'], PASSWORD_DEFAULT));
+        }
+        
+        $sql = "UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email?" . $password_update . " 
+                WHERE id=? AND company_id=?";
+        
+        $stmt = $db->prepare($sql);
+        if ($stmt && $stmt->bind_param($types, ...$values)) {
+            if ($stmt->execute()) {
+                $success = "Agent mis à jour avec succès";
+            } else {
+                $error = "Erreur lors de l'exécution: " . $stmt->error;
+            }
+        } else {
+            $error = "Erreur de préparation/liaison: " . ($db->error ?? $stmt->error ?? 'Unknown error');
+        }
+    } else {
+        $error = "Données invalides ou âge insuffisant (minimum 24 ans)";
+    }
+    break;
+
+case 'update_profile':  // Changed from 'update_agent' to 'update_profile'
+    if ($_POST['age'] >= 24) {
+        // Construire la requête SQL
+        $sql = "UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email=?";
+        
+        // Types de base pour les 9 champs
+        $types = "ssisssids";  // Note: wilaya_id='i', salaire='d'
+        $values = [
+            $_POST['nom'], 
+            $_POST['prenom'], 
+            (int)$_POST['age'], 
+            $_POST['numero_tlfn'],
+            $_POST['nationalite'], 
+            $_POST['numero_cart_national'], 
+            (int)$_POST['wilaya_id'],  // Conversion en integer
+            (float)$_POST['salaire'],  // Conversion en float/double
+            $_POST['email']
+        ];
+        
+        // Gestion du mot de passe
+        if (!empty($_POST['password'])) {
+            $sql .= ", password=?";
+            $types .= "s";  // Ajouter 's' pour le mot de passe
+            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+        }
+        
+        // Ajouter la clause WHERE
+        $sql .= " WHERE id=?";
+        $types .= "i";  // Ajouter 'i' pour l'ID
+        $values[] = $admin_id;
+        
+        // DEBUG: Vérifions ce qui est construit
+        error_log("SQL: " . $sql);
+        error_log("Types: " . $types);
+        error_log("Nombre de valeurs: " . count($values));
+        
+        // Préparer et exécuter
+        $stmt = $db->prepare($sql);
+        if ($stmt === false) {
+            $error = "Erreur de préparation SQL: " . $db->error;
+            break;
+        }
+        
+        // Vérifier que le nombre de types correspond au nombre de valeurs
+        if (strlen($types) !== count($values)) {
+            $error = "Erreur: Nombre de types (" . strlen($types) . ") ne correspond pas au nombre de valeurs (" . count($values) . ")";
+            break;
+        }
+        
+        // Liaison des paramètres avec vérification
+        $bound = $stmt->bind_param($types, ...$values);
+        if ($bound === false) {
+            $error = "Erreur de liaison des paramètres: " . $stmt->error;
+            break;
+        }
+        
+        if ($stmt->execute()) {
+            $_SESSION['user_name'] = $_POST['prenom'] . ' ' . $_POST['nom'];
+            $_SESSION['user_email'] = $_POST['email'];
+            $success = "Profil mis à jour avec succès";
+        } else {
+            $error = "Erreur lors de la mise à jour: " . $stmt->error;
+        }
+    } else {
+        $error = "L'âge minimum est de 24 ans";
+    }
+    break;
+
                     
                 case 'delete_agent':
                     if (isset($_POST['agent_id'])) {
@@ -2484,34 +2572,7 @@ function displayAdminDashboard($auth, $app, $db) {
                     }
                     break;
                     
-                case 'update_profile':
-                    if ($_POST['age'] >= 24) {
-                        $password_update = '';
-                        $types = "ssissssdii";
-                        $values = [
-                            $_POST['nom'], $_POST['prenom'], $_POST['age'], $_POST['numero_tlfn'],
-                            $_POST['nationalite'], $_POST['numero_cart_national'], $_POST['wilaya_id'],
-                            $_POST['salaire'], $_POST['email'], $admin_id
-                        ];
-                        
-                        if (!empty($_POST['password'])) {
-                            $password_update = ", password=?";
-                            $types .= "s";
-                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
-                        }
-                        
-                        $stmt = $db->prepare("UPDATE administrator SET nom=?, prenom=?, age=?, numero_tlfn=?, 
-                                             nationalite=?, numero_cart_national=?, wilaya_id=?, salaire=?, email=?$password_update 
-                                             WHERE id=?");
-                        $stmt->bind_param($types, ...$values);
-                        if ($stmt->execute()) {
-                            $_SESSION['user_name'] = $_POST['prenom'] . ' ' . $_POST['nom'];
-                            $success = "Profil mis à jour avec succès";
-                        } else {
-                            $error = "Erreur lors de la mise à jour";
-                        }
-                    }
-                    break;
+             
             }
         }
     }
