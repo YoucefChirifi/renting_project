@@ -2171,16 +2171,66 @@ function displayAgentDashboard($auth, $app, $db) {
                     }
                     break;
                     
+                case 'mark_as_paid':
+                    if (isset($_POST['reservation_id'])) {
+                        $reservation_id = (int)$_POST['reservation_id'];
+                        
+                        // Start transaction
+                        $db->conn->begin_transaction();
+                        
+                        try {
+                            // 1. Get reservation amount
+                            $reservation_query = $db->query("SELECT montant, id_client, car_id FROM reservation WHERE id_reservation = $reservation_id AND id_company = $company_id");
+                            if ($reservation_query->num_rows === 0) {
+                                throw new Exception("Réservation non trouvée");
+                            }
+                            $reservation_data = $reservation_query->fetch_assoc();
+                            $reservation_amount = $reservation_data['montant'];
+                            $client_id = $reservation_data['id_client'];
+                            $car_id = $reservation_data['car_id'];
+                            
+                            // 2. Create a payment record
+                            $payment_stmt = $db->prepare("INSERT INTO payment (amount, card_number, card_code, status, payment_date) 
+                                                        VALUES (?, '0000000000000000', '000', 'paid', NOW())");
+                            $payment_stmt->bind_param("d", $reservation_amount);
+                            $payment_stmt->execute();
+                            $payment_id = $db->conn->insert_id;
+                            
+                            // 3. Update reservation with payment ID and mark as completed
+                            $update_reservation = $db->prepare("UPDATE reservation SET id_payment = ?, status = 'completed' WHERE id_reservation = ? AND id_company = ?");
+                            $update_reservation->bind_param("iii", $payment_id, $reservation_id, $company_id);
+                            $update_reservation->execute();
+                            
+                            // 4. Update client status to 'payer'
+                            $update_client = $db->prepare("UPDATE client SET status = 'payer' WHERE id = ? AND company_id = ?");
+                            $update_client->bind_param("ii", $client_id, $company_id);
+                            $update_client->execute();
+                            
+                            // 5. Make the car available again
+                            $update_car = $db->prepare("UPDATE car SET voiture_work = 'disponible' WHERE id_car = ? AND company_id = ?");
+                            $update_car->bind_param("ii", $car_id, $company_id);
+                            $update_car->execute();
+                            
+                            $db->conn->commit();
+                            $success = "Réservation marquée comme payée avec succès!";
+                            
+                        } catch (Exception $e) {
+                            $db->conn->rollback();
+                            $error = "Erreur lors du paiement: " . $e->getMessage();
+                        }
+                    }
+                    break;
+                    
                 case 'delete_client':
                     if (isset($_POST['client_id'])) {
                         $client_id = (int)$_POST['client_id'];
                         
-                        // First check if client has active reservations
-                        $check_reservations = $db->query("SELECT COUNT(*) as count FROM reservation WHERE id_client = $client_id AND status = 'active'");
+                        // Check if client has ANY reservations
+                        $check_reservations = $db->query("SELECT COUNT(*) as count FROM reservation WHERE id_client = $client_id");
                         $reservation_count = $check_reservations->fetch_assoc()['count'];
                         
                         if ($reservation_count > 0) {
-                            $error = "Impossible de supprimer ce client car il a des réservations actives";
+                            $error = "Impossible de supprimer ce client car il a des réservations associées.";
                         } else {
                             $stmt = $db->prepare("DELETE FROM client WHERE id=? AND company_id=?");
                             $stmt->bind_param("ii", $client_id, $company_id);
@@ -2364,7 +2414,7 @@ function displayAgentDashboard($auth, $app, $db) {
                                                     echo $client['status'] == 'payer' ? 'bg-green-100 text-green-800' :
                                                     ($client['status'] == 'reserve' ? 'bg-yellow-100 text-yellow-800' :
                                                     ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
-                                            <option value="actif" <?php echo $client['status'] == 'actif' ? 'selected' : ''; ?>>Actif</option>
+                                            <option value="non reserve" <?php echo $client['status'] == 'non reserve' ? 'selected' : ''; ?>>Non réservé</option>
                                             <option value="payer" <?php echo $client['status'] == 'payer' ? 'selected' : ''; ?>>Payé</option>
                                             <option value="reserve" <?php echo $client['status'] == 'reserve' ? 'selected' : ''; ?>>Réservé</option>
                                             <option value="annuler" <?php echo $client['status'] == 'annuler' ? 'selected' : ''; ?>>Annulé</option>
@@ -2401,7 +2451,21 @@ function displayAgentDashboard($auth, $app, $db) {
                 </h2>
                 
                 <div class="space-y-4">
-                    <?php while ($res = $reservations->fetch_assoc()): ?>
+                    <?php while ($res = $reservations->fetch_assoc()): 
+                        // Déterminer le texte du statut
+                        $status_text = '';
+                        $status_class = '';
+                        if ($res['status'] == 'completed' && $res['payment_status'] == 'paid') {
+                            $status_text = 'Terminé';
+                            $status_class = 'bg-green-100 text-green-800';
+                        } elseif ($res['payment_status'] == 'paid') {
+                            $status_text = 'Payé';
+                            $status_class = 'bg-green-100 text-green-800';
+                        } else {
+                            $status_text = 'En attente';
+                            $status_class = 'bg-red-100 text-red-800';
+                        }
+                    ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <div class="flex justify-between items-start mb-2">
                             <div>
@@ -2440,12 +2504,12 @@ function displayAgentDashboard($auth, $app, $db) {
                         </div>
                         
                         <div class="flex justify-between items-center mt-2">
-                            <span class="text-xs px-2 py-1 rounded 
-                                <?php echo $res['payment_status'] == 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
-                                <?php echo $res['payment_status'] == 'paid' ? 'Payé' : 'En attente'; ?>
+                            <span class="text-xs px-2 py-1 rounded <?php echo $status_class; ?>">
+                                <?php echo $status_text; ?>
                             </span>
                             <?php if ($res['status'] == 'active' && $res['payment_status'] != 'paid'): ?>
-                            <button class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+                            <button onclick="markAsPaid(<?php echo $res['id_reservation']; ?>)" 
+                                    class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
                                 <i class="fas fa-money-bill mr-1"></i>Marquer comme payé
                             </button>
                             <?php endif; ?>
@@ -2460,6 +2524,30 @@ function displayAgentDashboard($auth, $app, $db) {
                     </div>
                     <?php endif; ?>
                 </div>
+            </div>
+        </div>
+        
+        <!-- Section Profil Agent -->
+        <div class="mt-8 bg-white rounded-xl shadow-lg p-6">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-2xl font-bold text-gray-800">
+                    <i class="fas fa-user-edit mr-2"></i>Mon Profil
+                </h2>
+                <button onclick="showEditProfileForm()" 
+                        class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
+                    <i class="fas fa-edit mr-2"></i>Modifier
+                </button>
+            </div>
+            
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div><strong>Nom:</strong> <?php echo htmlspecialchars($agent_info['nom']); ?></div>
+                <div><strong>Prénom:</strong> <?php echo htmlspecialchars($agent_info['prenom']); ?></div>
+                <div><strong>Email:</strong> <?php echo htmlspecialchars($agent_info['email']); ?></div>
+                <div><strong>Âge:</strong> <?php echo $agent_info['age']; ?></div>
+                <div><strong>Téléphone:</strong> <?php echo htmlspecialchars($agent_info['numero_tlfn']); ?></div>
+                <div><strong>Salaire:</strong> <?php echo number_format($agent_info['salaire'], 0, ',', ' '); ?> DA</div>
+                <div><strong>Nationalité:</strong> <?php echo htmlspecialchars($agent_info['nationalite']); ?></div>
+                <div><strong>Carte Nationale:</strong> <?php echo htmlspecialchars($agent_info['numero_cart_national']); ?></div>
             </div>
         </div>
     </div>
@@ -2553,30 +2641,6 @@ function displayAgentDashboard($auth, $app, $db) {
                     </button>
                 </div>
             </form>
-        </div>
-    </div>
-    
-    <!-- Section Profil Agent -->
-    <div class="mt-8 bg-white rounded-xl shadow-lg p-6">
-        <div class="flex justify-between items-center mb-6">
-            <h2 class="text-2xl font-bold text-gray-800">
-                <i class="fas fa-user-edit mr-2"></i>Mon Profil
-            </h2>
-            <button onclick="showEditProfileForm()" 
-                    class="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg">
-                <i class="fas fa-edit mr-2"></i>Modifier
-            </button>
-        </div>
-        
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div><strong>Nom:</strong> <?php echo htmlspecialchars($agent_info['nom']); ?></div>
-            <div><strong>Prénom:</strong> <?php echo htmlspecialchars($agent_info['prenom']); ?></div>
-            <div><strong>Email:</strong> <?php echo htmlspecialchars($agent_info['email']); ?></div>
-            <div><strong>Âge:</strong> <?php echo $agent_info['age']; ?></div>
-            <div><strong>Téléphone:</strong> <?php echo htmlspecialchars($agent_info['numero_tlfn']); ?></div>
-            <div><strong>Salaire:</strong> <?php echo number_format($agent_info['salaire'], 0, ',', ' '); ?> DA</div>
-            <div><strong>Nationalité:</strong> <?php echo htmlspecialchars($agent_info['nationalite']); ?></div>
-            <div><strong>Carte Nationale:</strong> <?php echo htmlspecialchars($agent_info['numero_cart_national']); ?></div>
         </div>
     </div>
     
@@ -2788,6 +2852,30 @@ function displayAgentDashboard($auth, $app, $db) {
             document.getElementById('editClientModal').style.display = 'block';
         }
         
+        function markAsPaid(reservationId) {
+            if (confirm('Marquer cette réservation comme payée? Cette action est irréversible.')) {
+                // Create a form and submit it
+                const form = document.createElement('form');
+                form.method = 'POST';
+                form.style.display = 'none';
+                
+                const actionInput = document.createElement('input');
+                actionInput.type = 'hidden';
+                actionInput.name = 'action';
+                actionInput.value = 'mark_as_paid';
+                form.appendChild(actionInput);
+                
+                const reservationInput = document.createElement('input');
+                reservationInput.type = 'hidden';
+                reservationInput.name = 'reservation_id';
+                reservationInput.value = reservationId;
+                form.appendChild(reservationInput);
+                
+                document.body.appendChild(form);
+                form.submit();
+            }
+        }
+        
         function closeModal(modalId) {
             document.getElementById(modalId).style.display = 'none';
         }
@@ -2834,7 +2922,7 @@ function displayAgentDashboard($auth, $app, $db) {
         </script>
         <?php
     }
-
+    
 function displayAdminDashboard($auth, $app, $db) {
     $admin_id = $auth->getUserId();
     $company_id = $_SESSION['company_id'];
