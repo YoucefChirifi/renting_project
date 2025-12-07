@@ -241,23 +241,44 @@ class Database {
                                   VALUES ('Agent', 'Principal', 28, '0555000001', 'Algérienne', 
                                   '0000000000000001', 16, 80000, $company_id, '$agent_email', '$hashed_password')");
                 
-                // Créer des clients pour chaque entreprise (3 clients par entreprise)
+                // Créer des clients pour chaque entreprise (2 clients par entreprise)
                 $client_names = [
                     ['nom' => 'Benali', 'prenom' => 'Ahmed', 'wilaya' => 16],
-                    ['nom' => 'Kadri', 'prenom' => 'Fatima', 'wilaya' => 31],
-                    ['nom' => 'Bouaziz', 'prenom' => 'Mohamed', 'wilaya' => 25]
+                    ['nom' => 'Kadri', 'prenom' => 'Fatima', 'wilaya' => 31]
                 ];
-                
+
                 foreach ($client_names as $idx => $client_data) {
                     $client_email = strtolower(str_replace(' ', '', $comp['name'])) . '.client' . ($idx + 1) . '@client.com';
                     $client_carte = '100000000000000' . ($idx + 1);
                     $client_tel = '05550000' . str_pad($idx + 10, 2, '0', STR_PAD_LEFT);
-                    $this->conn->query("INSERT INTO client (nom, prenom, age, numero_tlfn, nationalite, 
-                                      numero_cart_national, wilaya_id, status, company_id, email, password) 
-                                      VALUES ('{$client_data['nom']}', '{$client_data['prenom']}', 25, 
-                                      '$client_tel', 'Algérienne', 
-                                      '$client_carte', {$client_data['wilaya']}, 'non reserve', $company_id, 
+                    $this->conn->query("INSERT INTO client (nom, prenom, age, numero_tlfn, nationalite,
+                                      numero_cart_national, wilaya_id, status, company_id, email, password)
+                                      VALUES ('{$client_data['nom']}', '{$client_data['prenom']}', 25,
+                                      '$client_tel', 'Algérienne',
+                                      '$client_carte', {$client_data['wilaya']}, 'non reserve', $company_id,
                                       '$client_email', '$hashed_password')");
+                }
+
+                // Créer 3 voitures pour chaque entreprise
+                $cars_data = [
+                    ['marque' => 'Renault', 'model' => 'Symbol', 'color' => 'Blanc', 'category' => 1, 'prix' => 5000],
+                    ['marque' => 'Peugeot', 'model' => '208', 'color' => 'Gris', 'category' => 2, 'prix' => 8000],
+                    ['marque' => 'Hyundai', 'model' => 'i10', 'color' => 'Bleu', 'category' => 1, 'prix' => 4500]
+                ];
+
+                foreach ($cars_data as $idx => $car_data) {
+                    // Générer le numéro de plaque selon le format algérien
+                    $serial = rand(10000, 99999); // 5 digits
+                    $year_short = date('y'); // Last 2 digits of current year
+                    $part2 = $car_data['category'] . $year_short;
+                    $wilaya = 31; // Oran
+                    $matricule = "$serial $part2 $wilaya";
+
+                    $this->conn->query("INSERT INTO car (company_id, marque, model, color, annee,
+                                      category, prix_day, status_voiture, matricule, voiture_work)
+                                      VALUES ($company_id, '{$car_data['marque']}', '{$car_data['model']}',
+                                      '{$car_data['color']}', " . date('Y') . ", {$car_data['category']},
+                                      {$car_data['prix']}, 1, '$matricule', 'disponible')");
                 }
             }
         }
@@ -628,12 +649,21 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_accounts' && isset($_GET['
             }
             break;
         case 'client':
-            $result = $db->query("SELECT DISTINCT c.email, c.password FROM client c INNER JOIN company comp ON c.company_id = comp.company_id GROUP BY c.company_id ORDER BY c.id LIMIT 3");
+            // Show 2 clients per company (total 6 clients from 3 companies)
+            $result = $db->query("SELECT c.email, c.password, c.company_id FROM client c INNER JOIN company comp ON c.company_id = comp.company_id ORDER BY c.company_id, c.id");
+            $company_counts = [];
             while ($row = $result->fetch_assoc()) {
-                $accounts[] = [
-                    'email' => $row['email'],
-                    'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
-                ];
+                $company_id = $row['company_id'];
+                if (!isset($company_counts[$company_id])) {
+                    $company_counts[$company_id] = 0;
+                }
+                if ($company_counts[$company_id] < 2) { // Limit to 2 per company
+                    $accounts[] = [
+                        'email' => $row['email'],
+                        'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
+                    ];
+                    $company_counts[$company_id]++;
+                }
             }
             break;
     }
@@ -1853,9 +1883,9 @@ function displayClientDashboard($auth, $app, $db) {
                     
                     <div>
                         <label class="block text-gray-700 mb-2">Date de fin</label>
-                        <input type="date" name="end_date" required 
-                               class="w-full px-4 py-2 border rounded-lg" 
-                               min="<?php echo date('Y-m-d'); ?>">
+                        <input type="date" name="end_date" required
+                               class="w-full px-4 py-2 border rounded-lg"
+                               id="end_date">
                     </div>
                     
                     <div>
@@ -1976,13 +2006,23 @@ function displayClientDashboard($auth, $app, $db) {
         const endDate = document.querySelector('#reservationForm input[name="end_date"]');
         const estimatedPrice = document.getElementById('estimatedPrice');
         
+        function updateEndDateMin() {
+            if (startDate && startDate.value) {
+                endDate.min = startDate.value;
+                // If end date is before start date, reset it
+                if (endDate.value && endDate.value < startDate.value) {
+                    endDate.value = startDate.value;
+                }
+            }
+        }
+
         function calculatePrice() {
             if (startDate && startDate.value && endDate && endDate.value && dailyPrice > 0) {
                 const start = new Date(startDate.value);
                 const end = new Date(endDate.value);
                 const diffTime = Math.abs(end - start);
                 const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
+
                 if (days > 0) {
                     estimatedPrice.textContent = (days * dailyPrice).toLocaleString();
                 } else {
@@ -1990,8 +2030,11 @@ function displayClientDashboard($auth, $app, $db) {
                 }
             }
         }
-        
-        if (startDate) startDate.addEventListener('change', calculatePrice);
+
+        if (startDate) {
+            startDate.addEventListener('change', updateEndDateMin);
+            startDate.addEventListener('change', calculatePrice);
+        }
         if (endDate) endDate.addEventListener('change', calculatePrice);
         
         // Fermer les modales en cliquant à l'extérieur
@@ -2801,12 +2844,19 @@ function displayAdminDashboard($auth, $app, $db) {
         if (isset($_POST['action'])) {
             switch ($_POST['action']) {
                 case 'add_car':
-                    // Générer le numéro de plaque
-                    $serial = rand(100000, 999999);
-                    $category = $_POST['category'];
-                    $year = $_POST['annee'];
-                    $wilaya = 31; // Wilaya par défaut (Oran)
-                    $matricule = "$serial $category $year $wilaya";
+                    // Générer le numéro de plaque selon le format algérien: "15231 113 31"
+                    // Part1 (15231): Serial Number (5 digits)
+                    $serial = rand(10000, 99999); // 5 digits for Algerian format
+
+                    // Part2 (113): Vehicle Type (1 digit) + Release Year (2 digits)
+                    $category = $_POST['category']; // 1, 2, or 3
+                    $year_short = substr($_POST['annee'], -2); // Last 2 digits of year
+                    $part2 = $category . $year_short; // e.g., "124" for category 1, year 2024
+
+                    // Part3 (31): Wilaya Code (2 digits)
+                    $wilaya = 31; // Wilaya par défaut (Oran) - 2 digits
+
+                    $matricule = "$serial $part2 $wilaya";
                     
                     $stmt = $db->prepare("INSERT INTO car (company_id, marque, model, color, annee, 
                                      category, prix_day, status_voiture, matricule, voiture_work) 
@@ -3235,18 +3285,20 @@ case 'update_profile':
                                     <?php echo number_format($agent['salaire'], 0, ',', ' '); ?> DA
                                 </td>
                                 <td class="px-4 py-3">
-                                    <button onclick="editAgent(<?php echo htmlspecialchars(json_encode($agent)); ?>)" 
-                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
-                                        <i class="fas fa-edit"></i> Modifier
-                                    </button>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet agent?');">
-                                        <input type="hidden" name="action" value="delete_agent">
-                                        <input type="hidden" name="agent_id" value="<?php echo $agent['id']; ?>">
-                                        <button type="submit" 
-                                                class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
-                                            <i class="fas fa-trash"></i> Supprimer
+                                    <div class="flex space-x-2">
+                                        <button onclick="editAgent(<?php echo htmlspecialchars(json_encode($agent)); ?>)"
+                                                class="text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
+                                            <i class="fas fa-edit mr-1"></i>Modifier
                                         </button>
-                                    </form>
+                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet agent?');">
+                                            <input type="hidden" name="action" value="delete_agent">
+                                            <input type="hidden" name="agent_id" value="<?php echo $agent['id']; ?>">
+                                            <button type="submit"
+                                                    class="text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50">
+                                                <i class="fas fa-trash mr-1"></i>Supprimer
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -3256,36 +3308,163 @@ case 'update_profile':
             </div>
         </div>
         
-        <!-- Statistiques -->
+        <!-- Statistiques Complètes -->
         <div class="bg-white rounded-xl shadow-lg p-6 mt-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">
-                <i class="fas fa-chart-bar mr-2"></i>Statistiques Mensuelles
+                <i class="fas fa-chart-bar mr-2"></i>Statistiques Complètes
             </h2>
-            
-            <div class="space-y-4">
-                <?php 
-                $stats_month->data_seek(0);
-                while ($stat = $stats_month->fetch_assoc()): 
+
+            <!-- Vue d'ensemble -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+                <?php
+                // Calcul des totaux globaux
+                $total_revenue = $db->query("SELECT SUM(montant) as total FROM reservation WHERE id_company = $company_id")->fetch_assoc()['total'] ?? 0;
+                $total_agents = $db->query("SELECT COUNT(*) as count FROM agent WHERE company_id = $company_id")->fetch_assoc()['count'];
+                $total_salaries = $db->query("SELECT SUM(salaire) as total FROM agent WHERE company_id = $company_id")->fetch_assoc()['total'] ?? 0;
+                $monthly_expenses = $total_salaries; // Pour l'instant, principalement les salaires
+                $monthly_revenue = $db->query("SELECT SUM(montant) as total FROM reservation WHERE id_company = $company_id AND MONTH(start_date) = MONTH(NOW()) AND YEAR(start_date) = YEAR(NOW())")->fetch_assoc()['total'] ?? 0;
+                $monthly_profit = $monthly_revenue - $monthly_expenses;
                 ?>
-                <div class="border border-gray-200 rounded-lg p-4">
-                    <div class="flex justify-between items-center mb-2">
-                        <span class="font-medium"><?php echo $stat['period']; ?></span>
-                        <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-sm">
-                            <?php echo $stat['total_reservations']; ?> réservations
-                        </span>
+                <div class="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mr-4">
+                            <i class="fas fa-dollar-sign text-white"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-green-600 font-medium">Revenus Totaux</p>
+                            <p class="text-2xl font-bold text-green-800"><?php echo number_format($total_revenue, 0, ',', ' '); ?> DA</p>
+                        </div>
                     </div>
-                    <p class="text-2xl font-bold text-purple-600">
-                        <?php echo number_format($stat['total_amount'], 0, ',', ' '); ?> DA
-                    </p>
                 </div>
-                <?php endwhile; ?>
-                
-                <?php if ($stats_month->num_rows == 0): ?>
-                <div class="text-center py-8 text-gray-500">
-                    <i class="fas fa-chart-line text-3xl mb-3"></i>
-                    <p>Aucune donnée statistique disponible</p>
+
+                <div class="bg-gradient-to-r from-red-50 to-red-100 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
+                            <i class="fas fa-money-bill-wave text-white"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-red-600 font-medium">Dépenses Mensuelles</p>
+                            <p class="text-2xl font-bold text-red-800"><?php echo number_format($monthly_expenses, 0, ',', ' '); ?> DA</p>
+                        </div>
+                    </div>
                 </div>
-                <?php endif; ?>
+
+                <div class="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
+                            <i class="fas fa-chart-line text-white"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm text-blue-600 font-medium">Bénéfice Mensuel</p>
+                            <p class="text-2xl font-bold <?php echo $monthly_profit >= 0 ? 'text-blue-800' : 'text-red-800'; ?>">
+                                <?php echo number_format($monthly_profit, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistiques par période -->
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <!-- Revenus par mois -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-calendar-alt mr-2 text-green-600"></i>Revenus Mensuels
+                    </h3>
+                    <div class="space-y-3">
+                        <?php
+                        $stats_month->data_seek(0);
+                        $monthly_data = [];
+                        while ($stat = $stats_month->fetch_assoc()) {
+                            $monthly_data[] = $stat;
+                        }
+
+                        if (!empty($monthly_data)):
+                            foreach ($monthly_data as $stat):
+                        ?>
+                        <div class="border border-gray-200 rounded-lg p-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="font-medium"><?php echo $stat['period']; ?></span>
+                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-sm">
+                                    <?php echo $stat['total_reservations']; ?> réservations
+                                </span>
+                            </div>
+                            <p class="text-xl font-bold text-green-600">
+                                <?php echo number_format($stat['total_amount'], 0, ',', ' '); ?> DA
+                            </p>
+                            <p class="text-sm text-gray-500 mt-1">
+                                Moyenne: <?php echo number_format($stat['avg_amount'], 0, ',', ' '); ?> DA/réservation
+                            </p>
+                        </div>
+                        <?php endforeach; else: ?>
+                        <div class="text-center py-8 text-gray-500">
+                            <i class="fas fa-chart-line text-3xl mb-3"></i>
+                            <p>Aucune donnée de revenus disponible</p>
+                        </div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+
+                <!-- Dépenses et analyse -->
+                <div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                        <i class="fas fa-money-bill-wave mr-2 text-red-600"></i>Analyse Financière
+                    </h3>
+                    <div class="space-y-4">
+                        <!-- Salaires des agents -->
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="font-medium text-gray-700">Salaires Agents</span>
+                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
+                                    <?php echo $total_agents; ?> agents
+                                </span>
+                            </div>
+                            <p class="text-xl font-bold text-red-600">
+                                <?php echo number_format($total_salaries, 0, ',', ' '); ?> DA/mois
+                            </p>
+                        </div>
+
+                        <!-- Ratio bénéfice/dépenses -->
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-700 mb-2">Ratio Bénéfice/Dépenses</h4>
+                            <?php
+                            $ratio = $monthly_expenses > 0 ? ($monthly_profit / $monthly_expenses) * 100 : 0;
+                            ?>
+                            <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
+                                <div class="bg-<?php echo $ratio >= 0 ? 'green' : 'red'; ?>-500 h-3 rounded-full" style="width: <?php echo min(abs($ratio), 100); ?>%"></div>
+                            </div>
+                            <p class="text-sm text-gray-600">
+                                <?php echo $ratio >= 0 ? 'Bénéfice' : 'Perte'; ?>: <?php echo number_format(abs($ratio), 1, ',', ' '); ?>%
+                            </p>
+                        </div>
+
+                        <!-- Statistiques des voitures -->
+                        <?php
+                        $car_stats = $db->query("SELECT
+                            COUNT(*) as total_cars,
+                            SUM(CASE WHEN voiture_work = 'disponible' THEN 1 ELSE 0 END) as available_cars,
+                            AVG(prix_day) as avg_price
+                            FROM car WHERE company_id = $company_id")->fetch_assoc();
+                        ?>
+                        <div class="bg-gray-50 rounded-lg p-4">
+                            <h4 class="font-medium text-gray-700 mb-2">Flotte Automobile</h4>
+                            <div class="grid grid-cols-3 gap-4 text-center">
+                                <div>
+                                    <p class="text-2xl font-bold text-blue-600"><?php echo $car_stats['total_cars']; ?></p>
+                                    <p class="text-xs text-gray-500">Total</p>
+                                </div>
+                                <div>
+                                    <p class="text-2xl font-bold text-green-600"><?php echo $car_stats['available_cars']; ?></p>
+                                    <p class="text-xs text-gray-500">Disponibles</p>
+                                </div>
+                                <div>
+                                    <p class="text-lg font-bold text-purple-600"><?php echo number_format($car_stats['avg_price'], 0, ',', ' '); ?> DA</p>
+                                    <p class="text-xs text-gray-500">Prix moyen</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
