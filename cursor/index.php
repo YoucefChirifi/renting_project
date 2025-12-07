@@ -1973,113 +1973,140 @@ function displayAgentDashboard($auth, $app, $db) {
                         if ($stmt->execute()) {
                             $success = "Client ajouté avec succès";
                         } else {
-                            $error = "Erreur lors de l'ajout du client";
+                            $error = "Erreur lors de l'ajout du client: " . $stmt->error;
                         }
                     }
                     break;
                     
-case 'update_client':
-    if (isset($_POST['client_id']) && $_POST['age'] >= 24) {
-        $password_update = '';
-        $sql = "UPDATE client SET nom=?, prenom=?, age=?, numero_tlfn=?, 
-                nationalite=?, numero_cart_national=?, wilaya_id=?, email=?";
-        
-        $types = "ssisssss";
-        $values = [
-            $_POST['nom'], 
-            $_POST['prenom'], 
-            (int)$_POST['age'], 
-            $_POST['numero_tlfn'],
-            $_POST['nationalite'], 
-            $_POST['numero_cart_national'], 
-            (int)$_POST['wilaya_id'],
-            $_POST['email']
-        ];
-        
-        // Add password if provided
-        if (!empty($_POST['password'])) {
-            $sql .= ", password=?";
-            $types .= "s";
-            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
-        }
-        
-        // Add WHERE clause
-        $sql .= " WHERE id=? AND company_id=?";
-        $types .= "ii";
-        $values[] = (int)$_POST['client_id'];
-        $values[] = (int)$company_id;
-        
-        $stmt = $db->prepare($sql);
-        if ($stmt && $stmt->bind_param($types, ...$values)) {
-            if ($stmt->execute()) {
-                $success = "Client mis à jour avec succès";
-            } else {
-                $error = "Erreur lors de la mise à jour: " . $stmt->error;
-            }
-        } else {
-            $error = "Erreur de préparation/liaison: " . ($db->error ?? $stmt->error ?? 'Unknown error');
-        }
-    } else {
-        $error = "Données invalides ou âge insuffisant (minimum 24 ans)";
-    }
-    break;
-
+                case 'update_client':
+                    if (isset($_POST['client_id']) && $_POST['age'] >= 24) {
+                        $password_update = '';
+                        $sql = "UPDATE client SET nom=?, prenom=?, age=?, numero_tlfn=?, 
+                                nationalite=?, numero_cart_national=?, wilaya_id=?, email=?";
+                        
+                        $types = "ssisssss";
+                        $values = [
+                            $_POST['nom'], 
+                            $_POST['prenom'], 
+                            (int)$_POST['age'], 
+                            $_POST['numero_tlfn'],
+                            $_POST['nationalite'], 
+                            $_POST['numero_cart_national'], 
+                            (int)$_POST['wilaya_id'],
+                            $_POST['email']
+                        ];
+                        
+                        // Add password if provided
+                        if (!empty($_POST['password'])) {
+                            $sql .= ", password=?";
+                            $types .= "s";
+                            $values[] = password_hash($_POST['password'], PASSWORD_DEFAULT);
+                        }
+                        
+                        // Add WHERE clause
+                        $sql .= " WHERE id=? AND company_id=?";
+                        $types .= "ii";
+                        $values[] = (int)$_POST['client_id'];
+                        $values[] = (int)$company_id;
+                        
+                        $stmt = $db->prepare($sql);
+                        if ($stmt && $stmt->bind_param($types, ...$values)) {
+                            if ($stmt->execute()) {
+                                $success = "Client mis à jour avec succès";
+                            } else {
+                                $error = "Erreur lors de la mise à jour: " . $stmt->error;
+                            }
+                        } else {
+                            $error = "Erreur de préparation/liaison: " . ($db->error ?? $stmt->error ?? 'Unknown error');
+                        }
+                    } else {
+                        $error = "Données invalides ou âge insuffisant (minimum 24 ans)";
+                    }
+                    break;
                     
-              case 'update_profile':
+                case 'update_profile':
+                    $nom = $_POST['nom'] ?? '';
+                    $prenom = $_POST['prenom'] ?? '';
+                    $age = $_POST['age'] ?? 0;
+                    $numero_tlfn = $_POST['numero_tlfn'] ?? '';
+                    $nationalite = $_POST['nationalite'] ?? '';
+                    $numero_cart_national = $_POST['numero_cart_national'] ?? '';
+                    $wilaya_id = $_POST['wilaya_id'] ?? 16;
+                    $email = $_POST['email'] ?? '';
+                    $password = $_POST['password'] ?? '';
 
-    $nom = $_POST['nom'] ?? '';
-    $prenom = $_POST['prenom'] ?? '';
-    $age = $_POST['age'] ?? 0;
-    $numero_tlfn = $_POST['numero_tlfn'] ?? '';
-    $nationalite = $_POST['nationalite'] ?? '';
-    $numero_cart_national = $_POST['numero_cart_national'] ?? '';
-    $wilaya_id = $_POST['wilaya_id'] ?? 16;
-    $email = $_POST['email'] ?? '';
-    $password = $_POST['password'] ?? '';
+                    if ($age < 24) {
+                        $error = "L'âge minimum est de 24 ans";
+                        break;
+                    }
 
-    if ($age < 24) {
-        $error = "L'âge minimum est de 24 ans";
-        break;
-    }
+                    if (empty($password)) {
+                        // Update WITHOUT password
+                        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?,
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=?
+                                             WHERE id=?");
+                        $stmt->bind_param("ssisssssi",
+                            $nom, $prenom, $age, $numero_tlfn,
+                            $nationalite, $numero_cart_national, $wilaya_id,
+                            $email, $agent_id
+                        );
+                    } else {
+                        // Update WITH password
+                        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+                        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?,
+                                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=?, password=?
+                                             WHERE id=?");
+                        $stmt->bind_param("ssissssssi",
+                            $nom, $prenom, $age, $numero_tlfn,
+                            $nationalite, $numero_cart_national, $wilaya_id,
+                            $email, $hashed_password, $agent_id
+                        );
+                    }
 
-    if (empty($password)) {
-
-        // Update WITHOUT password
-        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?,
-                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=?
-                             WHERE id=?");
-
-        $stmt->bind_param("ssisssssi",
-            $nom, $prenom, $age, $numero_tlfn,
-            $nationalite, $numero_cart_national, $wilaya_id,
-            $email, $agent_id
-        );
-
-    } else {
-
-        // Update WITH password
-        $hashed_password = password_hash($password, PASSWORD_DEFAULT);
-
-        $stmt = $db->prepare("UPDATE agent SET nom=?, prenom=?, age=?, numero_tlfn=?,
-                             nationalite=?, numero_cart_national=?, wilaya_id=?, email=?, password=?
-                             WHERE id=?");
-
-        $stmt->bind_param("ssisssssisi",
-            $nom, $prenom, $age, $numero_tlfn,
-            $nationalite, $numero_cart_national, $wilaya_id,
-            $email, $hashed_password, $agent_id
-        );
-    }
-
-    if ($stmt->execute()) {
-        $_SESSION['user_name'] = $prenom . ' ' . $nom;
-        $success = "Profil mis à jour avec succès";
-    } else {
-        $error = "Erreur lors de la mise à jour";
-    }
-
-    break;
-
+                    if ($stmt->execute()) {
+                        $_SESSION['user_name'] = $prenom . ' ' . $nom;
+                        $success = "Profil mis à jour avec succès";
+                    } else {
+                        $error = "Erreur lors de la mise à jour: " . $stmt->error;
+                    }
+                    break;
+                    
+                case 'delete_client':
+                    if (isset($_POST['client_id'])) {
+                        $client_id = (int)$_POST['client_id'];
+                        
+                        // First check if client has active reservations
+                        $check_reservations = $db->query("SELECT COUNT(*) as count FROM reservation WHERE id_client = $client_id AND status = 'active'");
+                        $reservation_count = $check_reservations->fetch_assoc()['count'];
+                        
+                        if ($reservation_count > 0) {
+                            $error = "Impossible de supprimer ce client car il a des réservations actives";
+                        } else {
+                            $stmt = $db->prepare("DELETE FROM client WHERE id=? AND company_id=?");
+                            $stmt->bind_param("ii", $client_id, $company_id);
+                            if ($stmt->execute()) {
+                                $success = "Client supprimé avec succès";
+                            } else {
+                                $error = "Erreur lors de la suppression: " . $stmt->error;
+                            }
+                        }
+                    }
+                    break;
+                    
+                case 'update_client_status':
+                    if (isset($_POST['client_id']) && isset($_POST['status'])) {
+                        $client_id = (int)$_POST['client_id'];
+                        $status = $db->real_escape_string($_POST['status']);
+                        
+                        $stmt = $db->prepare("UPDATE client SET status=? WHERE id=? AND company_id=?");
+                        $stmt->bind_param("sii", $status, $client_id, $company_id);
+                        if ($stmt->execute()) {
+                            $success = "Statut du client mis à jour avec succès";
+                        } else {
+                            $error = "Erreur lors de la mise à jour du statut: " . $stmt->error;
+                        }
+                    }
+                    break;
             }
         }
     }
@@ -2229,24 +2256,33 @@ case 'update_client':
                                 <td class="px-4 py-3"><?php echo htmlspecialchars($client['numero_tlfn']); ?></td>
                                 <td class="px-4 py-3"><?php echo htmlspecialchars($client['wilaya_name']); ?></td>
                                 <td class="px-4 py-3">
-                                    <span class="px-2 py-1 rounded text-xs 
-                                        <?php echo $client['status'] == 'payer' ? 'bg-green-100 text-green-800' :
-                                              ($client['status'] == 'reserve' ? 'bg-yellow-100 text-yellow-800' :
-                                              ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
-                                        <?php echo ucfirst($client['status']); ?>
-                                    </span>
+                                    <form method="POST" class="inline" onsubmit="return confirm('Changer le statut de ce client?');">
+                                        <input type="hidden" name="action" value="update_client_status">
+                                        <input type="hidden" name="client_id" value="<?php echo $client['id']; ?>">
+                                        <select name="status" onchange="this.form.submit()" 
+                                                class="text-xs px-2 py-1 rounded <?php 
+                                                    echo $client['status'] == 'payer' ? 'bg-green-100 text-green-800' :
+                                                    ($client['status'] == 'reserve' ? 'bg-yellow-100 text-yellow-800' :
+                                                    ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
+                                            <option value="actif" <?php echo $client['status'] == 'actif' ? 'selected' : ''; ?>>Actif</option>
+                                            <option value="payer" <?php echo $client['status'] == 'payer' ? 'selected' : ''; ?>>Payé</option>
+                                            <option value="reserve" <?php echo $client['status'] == 'reserve' ? 'selected' : ''; ?>>Réservé</option>
+                                            <option value="annuler" <?php echo $client['status'] == 'annuler' ? 'selected' : ''; ?>>Annulé</option>
+                                        </select>
+                                    </form>
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="flex space-x-2">
                                         <button onclick="editClient(<?php echo htmlspecialchars(json_encode($client)); ?>)" 
-                                                class="text-blue-600 hover:text-blue-800">
-                                            <i class="fas fa-edit"></i>
+                                                class="text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
+                                            <i class="fas fa-edit mr-1"></i>Modifier
                                         </button>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce client?');">
+                                        <form method="POST" style="display:inline;" 
+                                              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer ce client? Cette action est irréversible.');">
                                             <input type="hidden" name="action" value="delete_client">
                                             <input type="hidden" name="client_id" value="<?php echo $client['id']; ?>">
-                                            <button type="submit" class="text-red-600 hover:text-red-800">
-                                                <i class="fas fa-trash"></i>
+                                            <button type="submit" class="text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50">
+                                                <i class="fas fa-trash mr-1"></i>Supprimer
                                             </button>
                                         </form>
                                     </div>
@@ -2308,6 +2344,11 @@ case 'update_client':
                                 <?php echo $res['payment_status'] == 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
                                 <?php echo $res['payment_status'] == 'paid' ? 'Payé' : 'En attente'; ?>
                             </span>
+                            <?php if ($res['status'] == 'active' && $res['payment_status'] != 'paid'): ?>
+                            <button class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+                                <i class="fas fa-money-bill mr-1"></i>Marquer comme payé
+                            </button>
+                            <?php endif; ?>
                         </div>
                     </div>
                     <?php endwhile; ?>
@@ -2339,44 +2380,44 @@ case 'update_client':
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-gray-700 mb-2">Nom</label>
+                            <label class="block text-gray-700 mb-2">Nom *</label>
                             <input type="text" name="nom" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                         <div>
-                            <label class="block text-gray-700 mb-2">Prénom</label>
+                            <label class="block text-gray-700 mb-2">Prénom *</label>
                             <input type="text" name="prenom" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
+                        <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
                         <input type="number" name="age" min="24" required 
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Téléphone</label>
+                        <label class="block text-gray-700 mb-2">Téléphone *</label>
                         <input type="tel" name="numero_tlfn" required 
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Nationalité</label>
+                        <label class="block text-gray-700 mb-2">Nationalité *</label>
                         <input type="text" name="nationalite" required 
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
+                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
                         <input type="text" name="numero_cart_national" required 
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Wilaya</label>
-                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
+                        <label class="block text-gray-700 mb-2">Wilaya *</label>
+                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <option value="">Sélectionnez une wilaya</option>
                             <?php
                             $wilayas = $app->getWilayas();
@@ -2388,15 +2429,16 @@ case 'update_client':
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Email</label>
+                        <label class="block text-gray-700 mb-2">Email *</label>
                         <input type="email" name="email" required
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
 
                     <div>
-                        <label class="block text-gray-700 mb-2">Mot de passe</label>
-                        <input type="password" name="password" required
-                               class="w-full px-4 py-2 border rounded-lg">
+                        <label class="block text-gray-700 mb-2">Mot de passe *</label>
+                        <input type="password" name="password" required minlength="6"
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
                     </div>
                 </div>
                 
@@ -2433,6 +2475,8 @@ case 'update_client':
             <div><strong>Âge:</strong> <?php echo $agent_info['age']; ?></div>
             <div><strong>Téléphone:</strong> <?php echo htmlspecialchars($agent_info['numero_tlfn']); ?></div>
             <div><strong>Salaire:</strong> <?php echo number_format($agent_info['salaire'], 0, ',', ' '); ?> DA</div>
+            <div><strong>Nationalité:</strong> <?php echo htmlspecialchars($agent_info['nationalite']); ?></div>
+            <div><strong>Carte Nationale:</strong> <?php echo htmlspecialchars($agent_info['numero_cart_national']); ?></div>
         </div>
     </div>
     
@@ -2453,203 +2497,243 @@ case 'update_client':
                 <div class="space-y-4">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="block text-gray-700 mb-2">Nom</label>
+                            <label class="block text-gray-700 mb-2">Nom *</label>
                             <input type="text" name="nom" id="edit_client_nom" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                         <div>
-                            <label class="block text-gray-700 mb-2">Prénom</label>
+                            <label class="block text-gray-700 mb-2">Prénom *</label>
                             <input type="text" name="prenom" id="edit_client_prenom" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
+                        <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
                         <input type="number" name="age" id="edit_client_age" min="24" required 
-                               class="w-full px-4 py-2 border rounded-lg">
+                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                     </div>
                     
                     <div>
-                        <label class="block text-gray-700 mb-2">Téléphone</label>
-                        <input type="tel" name="numero_tlfn" id="edit_client_tel" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Nationalité</label>
-                        <input type="text" name="nationalite" id="edit_client_nationalite" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
-                        <input type="text" name="numero_cart_national" id="edit_client_carte" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Wilaya</label>
-                        <select name="wilaya_id" id="edit_client_wilaya" required class="w-full px-4 py-2 border rounded-lg">
-                            <option value="">Sélectionnez une wilaya</option>
-                            <?php
-                            $wilayas = $app->getWilayas();
-                            while ($wilaya = $wilayas->fetch_assoc()):
-                            ?>
-                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Email</label>
-                        <input type="email" name="email" id="edit_client_email" required
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                </div>
-                
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="closeModal('editClientModal')" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        Mettre à jour
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Modal d'édition de profil agent -->
-    <div id="editProfileModal" class="modal">
-        <div class="modal-content fade-in">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
-                <button onclick="closeModal('editProfileModal')" class="text-gray-500 hover:text-gray-700">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <form method="POST">
-                <input type="hidden" name="action" value="update_profile">
-                
-                <div class="space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-gray-700 mb-2">Nom</label>
-                            <input type="text" name="nom" value="<?php echo htmlspecialchars($agent_info['nom']); ?>" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                        <label class="block text-gray-700 mb-2">Téléphone *</label>
+                            <input type="tel" name="numero_tlfn" id="edit_client_tel" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
+                        
                         <div>
-                            <label class="block text-gray-700 mb-2">Prénom</label>
-                            <input type="text" name="prenom" value="<?php echo htmlspecialchars($agent_info['prenom']); ?>" required 
-                                   class="w-full px-4 py-2 border rounded-lg">
+                            <label class="block text-gray-700 mb-2">Nationalité *</label>
+                            <input type="text" name="nationalite" id="edit_client_nationalite" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Âge (minimum 24)</label>
-                        <input type="number" name="age" value="<?php echo $agent_info['age']; ?>" min="24" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Téléphone</label>
-                        <input type="tel" name="numero_tlfn" value="<?php echo htmlspecialchars($agent_info['numero_tlfn']); ?>" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Nationalité</label>
-                        <input type="text" name="nationalite" value="<?php echo htmlspecialchars($agent_info['nationalite']); ?>" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale</label>
-                        <input type="text" name="numero_cart_national" value="<?php echo htmlspecialchars($agent_info['numero_cart_national']); ?>" required 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Wilaya</label>
-                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
-                            <?php
-                            $wilayas = $app->getWilayas();
-                            while ($wilaya = $wilayas->fetch_assoc()):
-                            ?>
-                                <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == $agent_info['wilaya_id'] ? 'selected' : ''; ?>>
-                                    <?php echo htmlspecialchars($wilaya['name']); ?>
-                                </option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Email</label>
-                        <input type="email" name="email" value="<?php echo htmlspecialchars($agent_info['email']); ?>" required
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                        <input type="password" name="password" 
-                               class="w-full px-4 py-2 border rounded-lg">
-                    </div>
-                </div>
-                
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="closeModal('editProfileModal')" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        Mettre à jour
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <script>
-    function showAddClientForm() {
-        document.getElementById('addClientModal').style.display = 'block';
-    }
-    
-    function showEditProfileForm() {
-        document.getElementById('editProfileModal').style.display = 'block';
-    }
-    
-function editClient(client) {
-    document.getElementById('editclientid').value = client.id;
-    document.getElementById('editclientnom').value = client.nom;
-    document.getElementById('editclientprenom').value = client.prenom;
-    document.getElementById('editclientage').value = client.age;
-    document.getElementById('editclienttel').value = client.numerotlfn;
-    document.getElementById('editclientnationalite').value = client.nationalite;
-    document.getElementById('editclientcarte').value = client.numerocartnational;
-    document.getElementById('editclientwilaya').value = client.wilayaid;
-    // FIX: Simple assignment without problematic conditional
-    document.getElementById('editclientemail').value = client.email || '';
-    document.getElementById('editClientModal').style.display = 'block';
-}
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
+                            <input type="text" name="numero_cart_national" id="edit_client_carte" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Wilaya *</label>
+                            <select name="wilaya_id" id="edit_client_wilaya" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <option value="">Sélectionnez une wilaya</option>
+                                <?php
+                                $wilayas = $app->getWilayas();
+                                while ($wilaya = $wilayas->fetch_assoc()):
+                                ?>
+                                    <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Email *</label>
+                            <input type="email" name="email" id="edit_client_email" required
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
 
-    function closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
-    }
-    
-    // Fermer les modales en cliquant à l'extérieur
-    window.onclick = function(event) {
-        if (event.target.classList.contains('modal')) {
-            event.target.style.display = 'none';
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                            <input type="password" name="password" 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button type="button" onclick="closeModal('editClientModal')" 
+                                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                            Annuler
+                        </button>
+                        <button type="submit" 
+                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Mettre à jour
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <!-- Modal d'édition de profil agent -->
+        <div id="editProfileModal" class="modal">
+            <div class="modal-content fade-in">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
+                    <button onclick="closeModal('editProfileModal')" class="text-gray-500 hover:text-gray-700">
+                        <i class="fas fa-times"></i>
+                    </button>
+                </div>
+                
+                <form method="POST">
+                    <input type="hidden" name="action" value="update_profile">
+                    
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label class="block text-gray-700 mb-2">Nom *</label>
+                                <input type="text" name="nom" value="<?php echo htmlspecialchars($agent_info['nom']); ?>" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            <div>
+                                <label class="block text-gray-700 mb-2">Prénom *</label>
+                                <input type="text" name="prenom" value="<?php echo htmlspecialchars($agent_info['prenom']); ?>" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
+                            <input type="number" name="age" value="<?php echo $agent_info['age']; ?>" min="24" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Téléphone *</label>
+                            <input type="tel" name="numero_tlfn" value="<?php echo htmlspecialchars($agent_info['numero_tlfn']); ?>" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nationalité *</label>
+                            <input type="text" name="nationalite" value="<?php echo htmlspecialchars($agent_info['nationalite']); ?>" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
+                            <input type="text" name="numero_cart_national" value="<?php echo htmlspecialchars($agent_info['numero_cart_national']); ?>" required 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Wilaya *</label>
+                            <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <?php
+                                $wilayas = $app->getWilayas();
+                                while ($wilaya = $wilayas->fetch_assoc()):
+                                ?>
+                                    <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == $agent_info['wilaya_id'] ? 'selected' : ''; ?>>
+                                        <?php echo htmlspecialchars($wilaya['name']); ?>
+                                    </option>
+                                <?php endwhile; ?>
+                            </select>
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Email *</label>
+                            <input type="email" name="email" value="<?php echo htmlspecialchars($agent_info['email']); ?>" required
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        </div>
+                        
+                        <div>
+                            <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                            <input type="password" name="password" 
+                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
+                        </div>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3 mt-6">
+                        <button type="button" onclick="closeModal('editProfileModal')" 
+                                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                            Annuler
+                        </button>
+                        <button type="submit" 
+                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                            Mettre à jour
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+        
+        <script>
+        function showAddClientForm() {
+            document.getElementById('addClientModal').style.display = 'block';
         }
+        
+        function showEditProfileForm() {
+            document.getElementById('editProfileModal').style.display = 'block';
+        }
+        
+        function editClient(client) {
+            document.getElementById('edit_client_id').value = client.id;
+            document.getElementById('edit_client_nom').value = client.nom;
+            document.getElementById('edit_client_prenom').value = client.prenom;
+            document.getElementById('edit_client_age').value = client.age;
+            document.getElementById('edit_client_tel').value = client.numero_tlfn;
+            document.getElementById('edit_client_nationalite').value = client.nationalite;
+            document.getElementById('edit_client_carte').value = client.numero_cart_national;
+            document.getElementById('edit_client_wilaya').value = client.wilaya_id;
+            document.getElementById('edit_client_email').value = client.email || '';
+            document.getElementById('editClientModal').style.display = 'block';
+        }
+        
+        function closeModal(modalId) {
+            document.getElementById(modalId).style.display = 'none';
+        }
+        
+        // Fermer les modales en cliquant à l'extérieur
+        window.onclick = function(event) {
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = 'none';
+            }
+        }
+        
+        // Ajouter des styles CSS pour les modales
+        const style = document.createElement('style');
+        style.textContent = `
+            .modal {
+                display: none;
+                position: fixed;
+                z-index: 1000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.5);
+                overflow-y: auto;
+            }
+            .modal-content {
+                background-color: white;
+                margin: 5% auto;
+                padding: 20px;
+                border-radius: 12px;
+                width: 90%;
+                max-width: 600px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            }
+            .fade-in {
+                animation: fadeIn 0.3s;
+            }
+            @keyframes fadeIn {
+                from { opacity: 0; transform: translateY(-20px); }
+                to { opacity: 1; transform: translateY(0); }
+            }
+        `;
+        document.head.appendChild(style);
+        </script>
+        <?php
     }
-    </script>
-    <?php
-}
 
 function displayAdminDashboard($auth, $app, $db) {
     $admin_id = $auth->getUserId();
