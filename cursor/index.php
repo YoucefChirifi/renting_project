@@ -579,7 +579,7 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_accounts' && isset($_GET['
     header('Content-Type: application/json');
     $role = $_GET['role'];
     $accounts = [];
-    
+
     // Définir les mots de passe par défaut selon le rôle
     $default_passwords = [
         'owner' => 'owner123',
@@ -587,48 +587,57 @@ if (isset($_GET['action']) && $_GET['action'] == 'get_accounts' && isset($_GET['
         'agent' => 'admin123',
         'client' => 'admin123'
     ];
-    
-    $password = $default_passwords[$role] ?? 'admin123';
-    
+
+    $default_password = $default_passwords[$role] ?? 'admin123';
+    $default_password_hash = password_hash($default_password, PASSWORD_DEFAULT);
+
+    function getPasswordDisplay($stored_hash, $default_hash, $default_password) {
+        if (password_verify($default_password, $stored_hash)) {
+            return $default_password;
+        } else {
+            return 'Mot de passe personnalisé';
+        }
+    }
+
     switch ($role) {
         case 'owner':
-            $result = $db->query("SELECT email FROM owner ORDER BY id LIMIT 5");
+            $result = $db->query("SELECT email, password FROM owner ORDER BY id LIMIT 3");
             while ($row = $result->fetch_assoc()) {
                 $accounts[] = [
                     'email' => $row['email'],
-                    'password' => $password
+                    'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
                 ];
             }
             break;
         case 'administrator':
-            $result = $db->query("SELECT email FROM administrator ORDER BY id LIMIT 5");
+            $result = $db->query("SELECT DISTINCT a.email, a.password FROM administrator a INNER JOIN company c ON a.company_id = c.company_id GROUP BY a.company_id ORDER BY a.id LIMIT 3");
             while ($row = $result->fetch_assoc()) {
                 $accounts[] = [
                     'email' => $row['email'],
-                    'password' => $password
+                    'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
                 ];
             }
             break;
         case 'agent':
-            $result = $db->query("SELECT email FROM agent ORDER BY id LIMIT 5");
+            $result = $db->query("SELECT DISTINCT a.email, a.password FROM agent a INNER JOIN company c ON a.company_id = c.company_id GROUP BY a.company_id ORDER BY a.id LIMIT 3");
             while ($row = $result->fetch_assoc()) {
                 $accounts[] = [
                     'email' => $row['email'],
-                    'password' => $password
+                    'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
                 ];
             }
             break;
         case 'client':
-            $result = $db->query("SELECT email FROM client ORDER BY id LIMIT 5");
+            $result = $db->query("SELECT DISTINCT c.email, c.password FROM client c INNER JOIN company comp ON c.company_id = comp.company_id GROUP BY c.company_id ORDER BY c.id LIMIT 3");
             while ($row = $result->fetch_assoc()) {
                 $accounts[] = [
                     'email' => $row['email'],
-                    'password' => $password
+                    'password' => getPasswordDisplay($row['password'], $default_password_hash, $default_password)
                 ];
             }
             break;
     }
-    
+
     echo json_encode($accounts);
     exit;
 }
@@ -737,21 +746,62 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['update_company']) && $
 // Traiter la suppression d'entreprise par le propriétaire
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['delete_company']) && $auth->getUserRole() == 'owner') {
     $company_id = $_POST['company_id'] ?? 0;
-    
+
     if ($company_id > 0) {
-        // Vérifier s'il y a des données liées
-        $check = $db->query("SELECT COUNT(*) as count FROM (SELECT id FROM administrator WHERE company_id = $company_id UNION ALL SELECT id FROM agent WHERE company_id = $company_id UNION ALL SELECT id FROM client WHERE company_id = $company_id UNION ALL SELECT id_car FROM car WHERE company_id = $company_id) as t")->fetch_assoc();
-        
-        if ($check['count'] > 0) {
-            $company_error = "Impossible de supprimer l'entreprise car elle contient des données liées (administrateurs, agents, clients ou voitures).";
-        } else {
+        // Start transaction
+        $db->conn->begin_transaction();
+
+        try {
+            // 1. Delete reservations and their associated payments for this company's clients and cars
+            $reservation_ids = [];
+            $result = $db->query("SELECT id_reservation FROM reservation WHERE id_company = $company_id");
+            while ($row = $result->fetch_assoc()) {
+                $reservation_ids[] = $row['id_reservation'];
+            }
+
+            if (!empty($reservation_ids)) {
+                $placeholders = str_repeat('?,', count($reservation_ids) - 1) . '?';
+                $stmt = $db->prepare("DELETE FROM reservation WHERE id_reservation IN ($placeholders)");
+                $stmt->bind_param(str_repeat('i', count($reservation_ids)), ...$reservation_ids);
+                $stmt->execute();
+
+                // Delete associated payments
+                $stmt = $db->prepare("DELETE FROM payment WHERE id_payment IN (SELECT id_payment FROM reservation WHERE id_reservation IN ($placeholders))");
+                $stmt->bind_param(str_repeat('i', count($reservation_ids)), ...$reservation_ids);
+                $stmt->execute();
+            }
+
+            // 2. Delete clients
+            $stmt = $db->prepare("DELETE FROM client WHERE company_id=?");
+            $stmt->bind_param("i", $company_id);
+            $stmt->execute();
+
+            // 3. Delete agents
+            $stmt = $db->prepare("DELETE FROM agent WHERE company_id=?");
+            $stmt->bind_param("i", $company_id);
+            $stmt->execute();
+
+            // 4. Delete administrators
+            $stmt = $db->prepare("DELETE FROM administrator WHERE company_id=?");
+            $stmt->bind_param("i", $company_id);
+            $stmt->execute();
+
+            // 5. Delete cars
+            $stmt = $db->prepare("DELETE FROM car WHERE company_id=?");
+            $stmt->bind_param("i", $company_id);
+            $stmt->execute();
+
+            // 6. Finally, delete the company
             $stmt = $db->prepare("DELETE FROM company WHERE company_id=?");
             $stmt->bind_param("i", $company_id);
-            if ($stmt->execute()) {
-                $company_success = "Entreprise supprimée avec succès!";
-            } else {
-                $company_error = "Erreur lors de la suppression de l'entreprise.";
-            }
+            $stmt->execute();
+
+            $db->conn->commit();
+            $company_success = "Entreprise supprimée avec succès ainsi que toutes les données associées (clients, agents, administrateurs, voitures et réservations)!";
+
+        } catch (Exception $e) {
+            $db->conn->rollback();
+            $company_error = "Erreur lors de la suppression de l'entreprise: " . $e->getMessage();
         }
     }
 }
@@ -1382,11 +1432,17 @@ function displayHomePage($auth, $app, $db) {
                 if (accounts.length > 0) {
                     accountsList.innerHTML = '';
                     accounts.forEach((account, index) => {
+                        const isCustomPassword = account.password === 'Mot de passe personnalisé';
                         const accountDiv = document.createElement('div');
-                        accountDiv.className = 'bg-white rounded-lg p-4 border-2 border-blue-200 hover:border-blue-500 hover:shadow-md transition-all cursor-pointer transform hover:scale-[1.02]';
+                        accountDiv.className = 'bg-white rounded-lg p-4 border-2 border-blue-200 hover:border-blue-500 hover:shadow-md transition-all transform hover:scale-[1.02]' + (isCustomPassword ? '' : ' cursor-pointer');
                         accountDiv.onclick = function() {
                             document.getElementById('loginEmail').value = account.email;
-                            document.getElementById('loginPassword').value = account.password;
+                            if (!isCustomPassword) {
+                                document.getElementById('loginPassword').value = account.password;
+                            } else {
+                                document.getElementById('loginPassword').value = '';
+                                alert('Ce compte utilise un mot de passe personnalisé. Veuillez contacter un administrateur pour obtenir le mot de passe.');
+                            }
                             // Ajouter un effet visuel de sélection
                             document.querySelectorAll('#accountsList > div').forEach(div => {
                                 div.classList.remove('border-blue-500', 'bg-blue-50');
@@ -1400,8 +1456,9 @@ function displayHomePage($auth, $app, $db) {
                                         <i class="fas fa-envelope mr-2 text-blue-500"></i>${account.email}
                                     </div>
                                     <div class="text-xs text-gray-600 mt-2 flex items-center">
-                                        <i class="fas fa-lock mr-2 text-gray-400"></i>
-                                        <span class="font-mono bg-gray-100 px-2 py-1 rounded">${account.password}</span>
+                                        <i class="fas fa-lock mr-2 ${isCustomPassword ? 'text-orange-400' : 'text-gray-400'}"></i>
+                                        <span class="font-mono ${isCustomPassword ? 'bg-orange-100 text-orange-800' : 'bg-gray-100'} px-2 py-1 rounded">${account.password}</span>
+                                        ${isCustomPassword ? '<i class="fas fa-info-circle ml-2 text-orange-500" title="Mot de passe personnalisé - contactez un admin"></i>' : ''}
                                     </div>
                                 </div>
                                 <div class="ml-3 text-blue-500">
