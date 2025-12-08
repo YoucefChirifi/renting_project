@@ -177,6 +177,14 @@ class Database {
     }
     
     private function seedData() {
+
+        // ✅ CHECK IF DATA ALREADY SEEDED - Only seed once!
+$checkSeeded = $this->conn->query("SELECT COUNT(*) as count FROM owner");
+if ($checkSeeded && $checkSeeded->fetch_assoc()['count'] > 0) {
+    // Data already seeded, skip this function
+    return;
+}
+
         // Insérer les wilayas
         $wilayas = [
             1 => 'Adrar', 2 => 'Chlef', 3 => 'Laghouat', 4 => 'Oum El Bouaghi', 5 => 'Batna',
@@ -309,36 +317,51 @@ class Auth {
     }
     
     public function login($email, $password, $role) {
-        $table = $this->getTableByRole($role);
-        $stmt = $this->db->prepare("SELECT * FROM $table WHERE email = ?");
-        $stmt->bind_param("s", $email);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        
-        if ($result->num_rows === 1) {
-            $user = $result->fetch_assoc();
-            if (password_verify($password, $user['password'])) {
-                $_SESSION['user_id'] = $user['id'];
-                $_SESSION['user_role'] = $role;
-                $_SESSION['user_email'] = $user['email'];
-                $_SESSION['user_name'] = $user['prenom'] . ' ' . $user['nom'];
-                
-                // Owner n'a pas de company_id
-                if ($role == 'owner') {
-                    $_SESSION['company_id'] = 0;
-                } else {
-                    $_SESSION['company_id'] = $user['company_id'] ?? 1;
+    $table = $this->getTableByRole($role);
+    $stmt = $this->db->prepare("SELECT * FROM $table WHERE email = ?");
+    $stmt->bind_param("s", $email);
+    $stmt->execute();
+    $result = $stmt->get_result();
+    
+    if ($result->num_rows === 1) {
+        $user = $result->fetch_assoc();
+        if (password_verify($password, $user['password'])) {
+            
+            // VÉRIFICATION AJOUTÉE : Vérifier si l'entreprise existe encore (sauf pour le propriétaire)
+            if ($role != 'owner') {
+                $company_id = $user['company_id'] ?? 0;
+                if ($company_id > 0) {
+                    $check_company = $this->db->query("SELECT company_id FROM company WHERE company_id = $company_id");
+                    if ($check_company->num_rows == 0) {
+                        // L'entreprise n'existe plus, empêcher la connexion
+                        return false;
+                    }
                 }
-                
-                // Cookie pour 30 jours
-                setcookie('user_id', $user['id'], time() + (30 * 24 * 60 * 60), "/");
-                setcookie('user_role', $role, time() + (30 * 24 * 60 * 60), "/");
-                
-                return true;
             }
+            
+            $_SESSION['user_id'] = $user['id'];
+            $_SESSION['user_role'] = $role;
+            $_SESSION['user_email'] = $user['email'];
+            $_SESSION['user_name'] = $user['prenom'] . ' ' . $user['nom'];
+            
+            // Owner n'a pas de company_id
+            if ($role == 'owner') {
+                $_SESSION['company_id'] = 0;
+            } else {
+                $_SESSION['company_id'] = $user['company_id'] ?? 1;
+            }
+            
+            // Cookie pour 30 jours
+            setcookie('user_id', $user['id'], time() + (30 * 24 * 60 * 60), "/");
+            setcookie('user_role', $role, time() + (30 * 24 * 60 * 60), "/");
+            
+            return true;
         }
-        return false;
     }
+    return false;
+}
+
+
     
     public function logout() {
         session_destroy();
@@ -439,6 +462,8 @@ class CarRentalApp {
         if ($period <= 0) {
             return false;
         }
+
+        
         
         // Obtenir le prix de la voiture
         $car_stmt = $this->db->prepare("SELECT prix_day FROM car WHERE id_car = ?");
@@ -579,6 +604,12 @@ class CarRentalApp {
             default: return 'Inconnu';
         }
     }
+    public function verifyCompanyExists($company_id) {
+    if ($company_id <= 0) return true; // Owner n'a pas de company_id
+    
+    $check = $this->db->query("SELECT company_id FROM company WHERE company_id = $company_id");
+    return $check->num_rows > 0;
+}
 }
 
 /***************************************************************
@@ -1306,7 +1337,15 @@ echo '</main>';
  ***************************************************************/
 
 function displayHomePage($auth, $app, $db) {
+if (isset($_GET['error']) && $_GET['error'] == 'company_deleted') {
+        echo '<div class="bg-yellow-100 border border-yellow-400 text-yellow-700 px-4 py-3 rounded mb-6">
+                <i class="fas fa-exclamation-triangle mr-2"></i>
+                Votre entreprise a été supprimée. Veuillez contacter le propriétaire du site.
+              </div>';
+    }
+
     ?>
+
     <div class="min-h-screen flex items-center justify-center py-12">
         <div class="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-6xl">
             <div class="text-center mb-12">
@@ -1623,6 +1662,22 @@ function displayRegisterPage($auth, $app) {
 function displayClientDashboard($auth, $app, $db) {
     $client_id = $auth->getUserId();
     $company_id = $_SESSION['company_id'];
+
+    if (!$app->verifyCompanyExists($company_id)) {
+        session_destroy();
+        header("Location: index.php?error=company_deleted");
+        exit();
+    }
+
+    if ($company_id > 0) {
+        $check_company = $db->query("SELECT company_id FROM company WHERE company_id = $company_id");
+        if ($check_company->num_rows == 0) {
+            // Déconnecter l'utilisateur si l'entreprise n'existe plus
+            session_destroy();
+            header("Location: index.php?error=company_deleted");
+            exit();
+        }
+    }
     
     // Traiter les actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -1886,21 +1941,9 @@ function displayClientDashboard($auth, $app, $db) {
                         <input type="date" name="end_date" required
                                class="w-full px-4 py-2 border rounded-lg"
                                id="end_date">
-                    </div>
                     
-                    <div>
-                        <label class="block text-gray-700 mb-2">Wilaya de prise en charge</label>
-                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
-                            <option value="">Sélectionnez une wilaya</option>
-                            <?php
-                            $wilayas = $app->getWilayas();
-                            while ($wilaya = $wilayas->fetch_assoc()):
-                            ?>
-                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
                     
+                            </div>
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <p class="text-sm text-gray-700">Prix estimé: <span id="estimatedPrice" class="font-bold text-blue-600">0</span> DA</p>
                         <p class="text-xs text-gray-500 mt-1">Le calcul se fait automatiquement selon la durée</p>
@@ -2051,6 +2094,21 @@ function displayClientDashboard($auth, $app, $db) {
 function displayAgentDashboard($auth, $app, $db) {
     $agent_id = $auth->getUserId();
     $company_id = $_SESSION['company_id'];
+
+    if (!$app->verifyCompanyExists($company_id)) {
+        session_destroy();
+        header("Location: index.php?error=company_deleted");
+        exit();
+    }
+    if ($company_id > 0) {
+        $check_company = $db->query("SELECT company_id FROM company WHERE company_id = $company_id");
+        if ($check_company->num_rows == 0) {
+            // Déconnecter l'utilisateur si l'entreprise n'existe plus
+            session_destroy();
+            header("Location: index.php?error=company_deleted");
+            exit();
+        }
+    }
     
     // Traiter les actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -3012,6 +3070,23 @@ function displayAgentDashboard($auth, $app, $db) {
 function displayAdminDashboard($auth, $app, $db) {
     $admin_id = $auth->getUserId();
     $company_id = $_SESSION['company_id'];
+
+    if (!$app->verifyCompanyExists($company_id)) {
+        session_destroy();
+        header("Location: index.php?error=company_deleted");
+        exit();
+    }
+
+        if ($company_id > 0) {
+        $check_company = $db->query("SELECT company_id FROM company WHERE company_id = $company_id");
+        if ($check_company->num_rows == 0) {
+            // Déconnecter l'utilisateur si l'entreprise n'existe plus
+            session_destroy();
+            header("Location: index.php?error=company_deleted");
+            exit();
+        }
+    }
+
     
     // Traiter les actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
