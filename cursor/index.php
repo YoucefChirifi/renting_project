@@ -3232,18 +3232,62 @@ case 'update_profile':
     // Obtenir les informations de l'admin
     $admin_info = $db->query("SELECT * FROM administrator WHERE id = $admin_id")->fetch_assoc();
     
-    // Obtenir les statistiques
+    // Obtenir les statistiques de base
     $total_cars = $db->query("SELECT COUNT(*) as count FROM car WHERE company_id = $company_id")->fetch_assoc();
     $total_clients = $db->query("SELECT COUNT(*) as count FROM client WHERE company_id = $company_id")->fetch_assoc();
     $total_agents = $db->query("SELECT COUNT(*) as count FROM agent WHERE company_id = $company_id")->fetch_assoc();
     
-    // Obtenir les revenus totaux
-    $total_revenue = $db->query("
+    // Calcul des revenus, dépenses et profits
+    // 1. Revenus totaux des réservations payées (des 30 derniers jours)
+    $revenue_last_30_days = $db->query("
         SELECT SUM(r.montant) as total 
         FROM reservation r
         JOIN payment p ON r.id_payment = p.id_payment
-        WHERE r.id_company = $company_id AND p.status = 'paid'
+        WHERE r.id_company = $company_id 
+        AND p.status = 'paid'
+        AND r.start_date >= DATE_SUB(NOW(), INTERVAL 30 DAY)
     ")->fetch_assoc();
+
+    // 2. Total des salaires des agents
+    $agent_salaries = $db->query("
+        SELECT SUM(salaire) as total 
+        FROM agent 
+        WHERE company_id = $company_id
+    ")->fetch_assoc();
+
+    // 3. Dépenses de l'entreprise (frais mensuels)
+    $company_expenses = $db->query("
+        SELECT frais_mensuel 
+        FROM company 
+        WHERE company_id = $company_id
+    ")->fetch_assoc();
+
+    // 4. Revenus totaux de toutes les réservations payées
+    $total_paid_reservations = $db->query("
+        SELECT SUM(r.montant) as total, COUNT(*) as count
+        FROM reservation r
+        JOIN payment p ON r.id_payment = p.id_payment
+        WHERE r.id_company = $company_id 
+        AND p.status = 'paid'
+    ")->fetch_assoc();
+
+    // Calcul des profits
+    $revenue_total = $total_paid_reservations['total'] ?? 0;
+    $agent_salaries_total = $agent_salaries['total'] ?? 0;
+    $company_expenses_total = $company_expenses['frais_mensuel'] ?? 0;
+
+    // Dépenses totales
+    $total_expenses = $agent_salaries_total + $company_expenses_total;
+
+    // Profit net
+    $net_profit = $revenue_total - $total_expenses;
+
+    // Profit margin (pourcentage)
+    $profit_margin = $revenue_total > 0 ? ($net_profit / $revenue_total) * 100 : 0;
+
+    // Moyenne par réservation
+    $avg_reservation_amount = $total_paid_reservations['count'] > 0 ? 
+        $revenue_total / $total_paid_reservations['count'] : 0;
     
     // Obtenir les voitures
     $cars = $app->getCompanyCars($company_id);
@@ -3251,7 +3295,7 @@ case 'update_profile':
     // Obtenir les agents
     $agents = $db->query("SELECT * FROM agent WHERE company_id = $company_id");
     
-    // Obtenir les statistiques
+    // Obtenir les statistiques mensuelles
     $stats_month = $app->getStatistics($company_id, 'month');
     ?>
     
@@ -3264,9 +3308,9 @@ case 'update_profile':
                     <p class="text-purple-100 mt-2">Gestion complète de l'agence</p>
                 </div>
                 <div class="text-right">
-                    <p class="text-lg">Chiffre d'affaires total: 
-                        <span class="font-bold">
-                            <?php echo number_format($total_revenue['total'] ?? 0, 0, ',', ' '); ?> DA
+                    <p class="text-lg">Profit net: 
+                        <span class="font-bold <?php echo $net_profit >= 0 ? 'text-green-300' : 'text-red-300'; ?>">
+                            <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
                         </span>
                     </p>
                 </div>
@@ -3287,7 +3331,7 @@ case 'update_profile':
         <?php endif; ?>
         
         <!-- Vue d'ensemble des statistiques -->
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
             <div class="bg-white rounded-xl shadow p-6">
                 <div class="flex items-center">
                     <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
@@ -3320,6 +3364,9 @@ case 'update_profile':
                     <div>
                         <p class="text-gray-600">Agents</p>
                         <p class="text-2xl font-bold text-gray-800"><?php echo $total_agents['count']; ?></p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            <?php echo number_format($agent_salaries_total, 0, ',', ' '); ?> DA/mois
+                        </p>
                     </div>
                 </div>
             </div>
@@ -3330,12 +3377,29 @@ case 'update_profile':
                         <i class="fas fa-chart-line text-purple-600 text-xl"></i>
                     </div>
                     <div>
-                        <p class="text-gray-600">CA du Mois</p>
-                        <?php
-                        $month_stats = $stats_month->fetch_assoc();
-                        ?>
+                        <p class="text-gray-600">Revenus 30j</p>
                         <p class="text-2xl font-bold text-gray-800">
-                            <?php echo number_format($month_stats['total_amount'] ?? 0, 0, ',', ' '); ?> DA
+                            <?php echo number_format($revenue_last_30_days['total'] ?? 0, 0, ',', ' '); ?> DA
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            <?php echo $total_paid_reservations['count'] ?? 0; ?> réservations payées
+                        </p>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="bg-white rounded-xl shadow p-6">
+                <div class="flex items-center">
+                    <div class="w-12 h-12 bg-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-100 rounded-lg flex items-center justify-center mr-4">
+                        <i class="fas fa-money-bill-wave text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-600 text-xl"></i>
+                    </div>
+                    <div>
+                        <p class="text-gray-600">Profit Net</p>
+                        <p class="text-2xl font-bold text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-800">
+                            <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
+                        </p>
+                        <p class="text-xs text-gray-500 mt-1">
+                            Marge: <?php echo number_format($profit_margin, 1, ',', ' '); ?>%
                         </p>
                     </div>
                 </div>
@@ -3401,18 +3465,21 @@ case 'update_profile':
                                     </span>
                                 </td>
                                 <td class="px-4 py-3">
-                                    <button onclick="editCar(<?php echo htmlspecialchars(json_encode($car)); ?>)" 
-                                            class="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm mr-2">
-                                        <i class="fas fa-edit"></i> Modifier
-                                    </button>
-                                    <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette voiture?');">
-                                        <input type="hidden" name="action" value="delete_car">
-                                        <input type="hidden" name="car_id" value="<?php echo $car['id_car']; ?>">
-                                        <button type="submit" 
-                                                class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded text-sm">
-                                            <i class="fas fa-trash"></i> Supprimer
+                                    <div class="flex space-x-2">
+                                        <button onclick="editCar(<?php echo htmlspecialchars(json_encode($car)); ?>)" 
+                                                class="text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
+                                            <i class="fas fa-edit mr-1"></i>Modifier
                                         </button>
-                                    </form>
+                                        <form method="POST" style="display:inline;" 
+                                              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cette voiture? Cette action est irréversible.');">
+                                            <input type="hidden" name="action" value="delete_car">
+                                            <input type="hidden" name="car_id" value="<?php echo $car['id_car']; ?>">
+                                            <button type="submit" 
+                                                    class="text-red-600 hover:text-red-800 px-2 py-1 rounded hover:bg-red-50">
+                                                <i class="fas fa-trash mr-1"></i>Supprimer
+                                            </button>
+                                        </form>
+                                    </div>
                                 </td>
                             </tr>
                             <?php endwhile; ?>
@@ -3464,7 +3531,8 @@ case 'update_profile':
                                                 class="text-blue-600 hover:text-blue-800 px-2 py-1 rounded hover:bg-blue-50">
                                             <i class="fas fa-edit mr-1"></i>Modifier
                                         </button>
-                                        <form method="POST" style="display:inline;" onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet agent?');">
+                                        <form method="POST" style="display:inline;" 
+                                              onsubmit="return confirm('Êtes-vous sûr de vouloir supprimer cet agent?');">
                                             <input type="hidden" name="action" value="delete_agent">
                                             <input type="hidden" name="agent_id" value="<?php echo $agent['id']; ?>">
                                             <button type="submit"
@@ -3482,159 +3550,246 @@ case 'update_profile':
             </div>
         </div>
         
-        <!-- Statistiques Complètes -->
+        <!-- Statistiques Financières Complètes -->
         <div class="bg-white rounded-xl shadow-lg p-6 mt-8">
             <h2 class="text-2xl font-bold text-gray-800 mb-6">
-                <i class="fas fa-chart-bar mr-2"></i>Statistiques Complètes
+                <i class="fas fa-chart-pie mr-2"></i>Analyse Financière Détailée
             </h2>
 
-            <!-- Vue d'ensemble -->
+            <!-- Vue d'ensemble financière -->
             <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-                <?php
-                // Calcul des totaux globaux
-                $total_revenue = $db->query("SELECT SUM(montant) as total FROM reservation WHERE id_company = $company_id")->fetch_assoc()['total'] ?? 0;
-                $total_agents = $db->query("SELECT COUNT(*) as count FROM agent WHERE company_id = $company_id")->fetch_assoc()['count'];
-                $total_salaries = $db->query("SELECT SUM(salaire) as total FROM agent WHERE company_id = $company_id")->fetch_assoc()['total'] ?? 0;
-                $monthly_expenses = $total_salaries; // Pour l'instant, principalement les salaires
-                $monthly_revenue = $db->query("SELECT SUM(montant) as total FROM reservation WHERE id_company = $company_id AND MONTH(start_date) = MONTH(NOW()) AND YEAR(start_date) = YEAR(NOW())")->fetch_assoc()['total'] ?? 0;
-                $monthly_profit = $monthly_revenue - $monthly_expenses;
-                ?>
-                <div class="bg-gradient-to-r from-green-50 to-green-100 rounded-lg p-4">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-green-500 rounded-lg flex items-center justify-center mr-4">
-                            <i class="fas fa-dollar-sign text-white"></i>
-                        </div>
+                <!-- Revenus -->
+                <div class="bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-4">
                         <div>
-                            <p class="text-sm text-green-600 font-medium">Revenus Totaux</p>
-                            <p class="text-2xl font-bold text-green-800"><?php echo number_format($total_revenue, 0, ',', ' '); ?> DA</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-gradient-to-r from-red-50 to-red-100 rounded-lg p-4">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-red-500 rounded-lg flex items-center justify-center mr-4">
-                            <i class="fas fa-money-bill-wave text-white"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-red-600 font-medium">Dépenses Mensuelles</p>
-                            <p class="text-2xl font-bold text-red-800"><?php echo number_format($monthly_expenses, 0, ',', ' '); ?> DA</p>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="bg-gradient-to-r from-blue-50 to-blue-100 rounded-lg p-4">
-                    <div class="flex items-center">
-                        <div class="w-12 h-12 bg-blue-500 rounded-lg flex items-center justify-center mr-4">
-                            <i class="fas fa-chart-line text-white"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm text-blue-600 font-medium">Bénéfice Mensuel</p>
-                            <p class="text-2xl font-bold <?php echo $monthly_profit >= 0 ? 'text-blue-800' : 'text-red-800'; ?>">
-                                <?php echo number_format($monthly_profit, 0, ',', ' '); ?> DA
+                            <h3 class="text-lg font-bold text-green-800">Revenus Totaux</h3>
+                            <p class="text-3xl font-bold text-green-900 mt-2">
+                                <?php echo number_format($revenue_total, 0, ',', ' '); ?> DA
                             </p>
                         </div>
+                        <div class="w-12 h-12 bg-green-200 rounded-full flex items-center justify-center">
+                            <i class="fas fa-money-bill-wave text-green-700 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="text-sm text-green-700">
+                        <p><i class="fas fa-calendar-alt mr-2"></i><?php echo $total_paid_reservations['count'] ?? 0; ?> réservations payées</p>
+                        <p><i class="fas fa-calculator mr-2"></i>Moyenne: <?php echo number_format($avg_reservation_amount, 0, ',', ' '); ?> DA/réservation</p>
+                    </div>
+                </div>
+
+                <!-- Dépenses -->
+                <div class="bg-gradient-to-r from-red-50 to-red-100 border border-red-200 rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-red-800">Dépenses Mensuelles</h3>
+                            <p class="text-3xl font-bold text-red-900 mt-2">
+                                <?php echo number_format($total_expenses, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                        <div class="w-12 h-12 bg-red-200 rounded-full flex items-center justify-center">
+                            <i class="fas fa-wallet text-red-700 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="text-sm text-red-700 space-y-1">
+                        <p><i class="fas fa-user-tie mr-2"></i>Salaires agents: <?php echo number_format($agent_salaries_total, 0, ',', ' '); ?> DA</p>
+                        <p><i class="fas fa-building mr-2"></i>Frais entreprise: <?php echo number_format($company_expenses_total, 0, ',', ' '); ?> DA</p>
+                    </div>
+                </div>
+
+                <!-- Profit -->
+                <div class="bg-gradient-to-r from-blue-50 to-blue-100 border border-blue-200 rounded-xl p-6">
+                    <div class="flex items-center justify-between mb-4">
+                        <div>
+                            <h3 class="text-lg font-bold text-blue-800">Analyse de Profit</h3>
+                            <p class="text-3xl font-bold <?php echo $net_profit >= 0 ? 'text-blue-900' : 'text-red-900'; ?> mt-2">
+                                <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                        <div class="w-12 h-12 bg-blue-200 rounded-full flex items-center justify-center">
+                            <i class="fas fa-chart-line text-blue-700 text-xl"></i>
+                        </div>
+                    </div>
+                    <div class="text-sm text-blue-700">
+                        <p><i class="fas fa-percentage mr-2"></i>Marge de profit: <?php echo number_format($profit_margin, 1, ',', ' '); ?>%</p>
+                        <p><i class="fas fa-balance-scale mr-2"></i>Ratio revenus/dépenses: <?php echo $total_expenses > 0 ? number_format($revenue_total / $total_expenses, 2, ',', ' ') : '∞'; ?></p>
                     </div>
                 </div>
             </div>
 
-            <!-- Statistiques par période -->
+            <!-- Graphiques de répartition -->
             <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                <!-- Revenus par mois -->
+                <!-- Répartition des dépenses -->
                 <div>
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">
-                        <i class="fas fa-calendar-alt mr-2 text-green-600"></i>Revenus Mensuels
+                        <i class="fas fa-pie-chart mr-2 text-red-600"></i>Répartition des Dépenses
                     </h3>
-                    <div class="space-y-3">
-                        <?php
-                        $stats_month->data_seek(0);
-                        $monthly_data = [];
-                        while ($stat = $stats_month->fetch_assoc()) {
-                            $monthly_data[] = $stat;
-                        }
+                    <div class="bg-gray-50 rounded-lg p-6">
+                        <?php if ($total_expenses > 0): ?>
+                            <?php
+                            $agent_salary_percent = ($agent_salaries_total / $total_expenses) * 100;
+                            $company_expenses_percent = ($company_expenses_total / $total_expenses) * 100;
+                            ?>
+                            <div class="space-y-4">
+                                <!-- Barre de progression agent -->
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm font-medium text-gray-700">Salaires Agents</span>
+                                        <span class="text-sm font-bold text-red-600">
+                                            <?php echo number_format($agent_salary_percent, 1, ',', ' '); ?>%
+                                        </span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="bg-red-500 h-3 rounded-full" style="width: <?php echo $agent_salary_percent; ?>%"></div>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        <?php echo number_format($agent_salaries_total, 0, ',', ' '); ?> DA
+                                    </p>
+                                </div>
 
-                        if (!empty($monthly_data)):
-                            foreach ($monthly_data as $stat):
-                        ?>
-                        <div class="border border-gray-200 rounded-lg p-4">
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="font-medium"><?php echo $stat['period']; ?></span>
-                                <span class="px-2 py-1 bg-green-100 text-green-800 rounded text-sm">
-                                    <?php echo $stat['total_reservations']; ?> réservations
-                                </span>
+                                <!-- Barre de progression frais entreprise -->
+                                <div>
+                                    <div class="flex justify-between mb-1">
+                                        <span class="text-sm font-medium text-gray-700">Frais Entreprise</span>
+                                        <span class="text-sm font-bold text-orange-600">
+                                            <?php echo number_format($company_expenses_percent, 1, ',', ' '); ?>%
+                                        </span>
+                                    </div>
+                                    <div class="w-full bg-gray-200 rounded-full h-3">
+                                        <div class="bg-orange-500 h-3 rounded-full" style="width: <?php echo $company_expenses_percent; ?>%"></div>
+                                    </div>
+                                    <p class="text-xs text-gray-500 mt-1">
+                                        <?php echo number_format($company_expenses_total, 0, ',', ' '); ?> DA
+                                    </p>
+                                </div>
                             </div>
-                            <p class="text-xl font-bold text-green-600">
-                                <?php echo number_format($stat['total_amount'], 0, ',', ' '); ?> DA
-                            </p>
-                            <p class="text-sm text-gray-500 mt-1">
-                                Moyenne: <?php echo number_format($stat['avg_amount'], 0, ',', ' '); ?> DA/réservation
-                            </p>
-                        </div>
-                        <?php endforeach; else: ?>
-                        <div class="text-center py-8 text-gray-500">
-                            <i class="fas fa-chart-line text-3xl mb-3"></i>
-                            <p>Aucune donnée de revenus disponible</p>
-                        </div>
+                        <?php else: ?>
+                            <p class="text-gray-500 text-center py-4">Aucune dépense enregistrée</p>
                         <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Dépenses et analyse -->
+                <!-- Analyse par agent -->
                 <div>
                     <h3 class="text-lg font-semibold text-gray-800 mb-4">
-                        <i class="fas fa-money-bill-wave mr-2 text-red-600"></i>Analyse Financière
+                        <i class="fas fa-user-tie mr-2 text-blue-600"></i>Analyse par Agent
                     </h3>
-                    <div class="space-y-4">
-                        <!-- Salaires des agents -->
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="font-medium text-gray-700">Salaires Agents</span>
-                                <span class="px-2 py-1 bg-blue-100 text-blue-800 rounded text-sm">
-                                    <?php echo $total_agents; ?> agents
-                                </span>
-                            </div>
-                            <p class="text-xl font-bold text-red-600">
-                                <?php echo number_format($total_salaries, 0, ',', ' '); ?> DA/mois
-                            </p>
-                        </div>
-
-                        <!-- Ratio bénéfice/dépenses -->
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <h4 class="font-medium text-gray-700 mb-2">Ratio Bénéfice/Dépenses</h4>
-                            <?php
-                            $ratio = $monthly_expenses > 0 ? ($monthly_profit / $monthly_expenses) * 100 : 0;
-                            ?>
-                            <div class="w-full bg-gray-200 rounded-full h-3 mb-2">
-                                <div class="bg-<?php echo $ratio >= 0 ? 'green' : 'red'; ?>-500 h-3 rounded-full" style="width: <?php echo min(abs($ratio), 100); ?>%"></div>
-                            </div>
-                            <p class="text-sm text-gray-600">
-                                <?php echo $ratio >= 0 ? 'Bénéfice' : 'Perte'; ?>: <?php echo number_format(abs($ratio), 1, ',', ' '); ?>%
-                            </p>
-                        </div>
-
-                        <!-- Statistiques des voitures -->
+                    <div class="bg-gray-50 rounded-lg p-6">
                         <?php
-                        $car_stats = $db->query("SELECT
-                            COUNT(*) as total_cars,
-                            SUM(CASE WHEN voiture_work = 'disponible' THEN 1 ELSE 0 END) as available_cars,
-                            AVG(prix_day) as avg_price
-                            FROM car WHERE company_id = $company_id")->fetch_assoc();
+                        $agents_with_stats = $db->query("
+                            SELECT a.nom, a.prenom, a.salaire, 
+                                   COUNT(r.id_reservation) as total_reservations,
+                                   COALESCE(SUM(r.montant), 0) as total_revenue
+                            FROM agent a
+                            LEFT JOIN reservation r ON a.company_id = r.id_company 
+                                AND r.id_payment IS NOT NULL
+                                AND EXISTS (SELECT 1 FROM payment p WHERE p.id_payment = r.id_payment AND p.status = 'paid')
+                            WHERE a.company_id = $company_id
+                            GROUP BY a.id
+                            ORDER BY total_revenue DESC
+                        ");
+                        
+                        if ($agents_with_stats->num_rows > 0):
                         ?>
-                        <div class="bg-gray-50 rounded-lg p-4">
-                            <h4 class="font-medium text-gray-700 mb-2">Flotte Automobile</h4>
-                            <div class="grid grid-cols-3 gap-4 text-center">
-                                <div>
-                                    <p class="text-2xl font-bold text-blue-600"><?php echo $car_stats['total_cars']; ?></p>
-                                    <p class="text-xs text-gray-500">Total</p>
+                        <div class="space-y-3">
+                            <?php while ($agent_stat = $agents_with_stats->fetch_assoc()): ?>
+                            <div class="border border-gray-200 rounded-lg p-3">
+                                <div class="flex justify-between items-center mb-2">
+                                    <span class="font-medium text-gray-800">
+                                        <?php echo htmlspecialchars($agent_stat['prenom'] . ' ' . $agent_stat['nom']); ?>
+                                    </span>
+                                    <span class="text-sm font-bold text-blue-600">
+                                        <?php echo number_format($agent_stat['total_revenue'], 0, ',', ' '); ?> DA
+                                    </span>
                                 </div>
-                                <div>
-                                    <p class="text-2xl font-bold text-green-600"><?php echo $car_stats['available_cars']; ?></p>
-                                    <p class="text-xs text-gray-500">Disponibles</p>
+                                <div class="grid grid-cols-2 gap-2 text-xs text-gray-600">
+                                    <div>
+                                        <i class="fas fa-money-bill-wave mr-1"></i>
+                                        Salaire: <?php echo number_format($agent_stat['salaire'], 0, ',', ' '); ?> DA
+                                    </div>
+                                    <div>
+                                        <i class="fas fa-calendar-check mr-1"></i>
+                                        Réservations: <?php echo $agent_stat['total_reservations']; ?>
+                                    </div>
                                 </div>
-                                <div>
-                                    <p class="text-lg font-bold text-purple-600"><?php echo number_format($car_stats['avg_price'], 0, ',', ' '); ?> DA</p>
-                                    <p class="text-xs text-gray-500">Prix moyen</p>
-                                </div>
+                            </div>
+                            <?php endwhile; ?>
+                        </div>
+                        <?php else: ?>
+                        <p class="text-gray-500 text-center py-4">Aucun agent avec des statistiques</p>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Tableau détaillé des revenus et dépenses -->
+            <div class="mt-8">
+                <h3 class="text-lg font-semibold text-gray-800 mb-4">
+                    <i class="fas fa-table mr-2 text-gray-600"></i>Détail Financier
+                </h3>
+                <div class="bg-gray-50 rounded-lg p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div class="bg-white p-4 rounded-lg border">
+                            <p class="text-sm text-gray-500">Revenus 30 jours</p>
+                            <p class="text-xl font-bold text-green-600">
+                                <?php echo number_format($revenue_last_30_days['total'] ?? 0, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border">
+                            <p class="text-sm text-gray-500">Revenus totaux</p>
+                            <p class="text-xl font-bold text-green-700">
+                                <?php echo number_format($revenue_total, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border">
+                            <p class="text-sm text-gray-500">Dépenses totales</p>
+                            <p class="text-xl font-bold text-red-600">
+                                <?php echo number_format($total_expenses, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                        <div class="bg-white p-4 rounded-lg border">
+                            <p class="text-sm text-gray-500">Profit net</p>
+                            <p class="text-xl font-bold <?php echo $net_profit >= 0 ? 'text-blue-600' : 'text-red-600'; ?>">
+                                <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
+                            </p>
+                        </div>
+                    </div>
+                    
+                    <!-- Ratio de rentabilité -->
+                    <div class="mt-6 bg-white p-4 rounded-lg border">
+                        <h4 class="font-medium text-gray-700 mb-3">Indicateurs de Performance</h4>
+                        <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                            <div>
+                                <p class="text-sm text-gray-600">Marge de profit</p>
+                                <p class="text-lg font-bold <?php echo $profit_margin >= 20 ? 'text-green-600' : ($profit_margin >= 10 ? 'text-yellow-600' : 'text-red-600'); ?>">
+                                    <?php echo number_format($profit_margin, 1, ',', ' '); ?>%
+                                </p>
+                                <p class="text-xs text-gray-500">
+                                    <?php 
+                                    if ($profit_margin >= 20) {
+                                        echo 'Excellent';
+                                    } elseif ($profit_margin >= 10) {
+                                        echo 'Bon';
+                                    } elseif ($profit_margin > 0) {
+                                        echo 'Acceptable';
+                                    } else {
+                                        echo 'Déficitaire';
+                                    }
+                                    ?>
+                                </p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Efficacité des agents</p>
+                                <p class="text-lg font-bold text-blue-600">
+                                    <?php echo $total_agents['count'] > 0 ? number_format($revenue_total / $total_agents['count'], 0, ',', ' ') : '0'; ?> DA/agent
+                                </p>
+                                <p class="text-xs text-gray-500">Revenus par agent</p>
+                            </div>
+                            <div>
+                                <p class="text-sm text-gray-600">Coût par réservation</p>
+                                <p class="text-lg font-bold text-purple-600">
+                                    <?php echo $total_paid_reservations['count'] > 0 ? number_format($total_expenses / $total_paid_reservations['count'], 0, ',', ' ') : '0'; ?> DA
+                                </p>
+                                <p class="text-xs text-gray-500">Coût moyen par location</p>
                             </div>
                         </div>
                     </div>
