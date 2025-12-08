@@ -1662,22 +1662,6 @@ function displayRegisterPage($auth, $app) {
 function displayClientDashboard($auth, $app, $db) {
     $client_id = $auth->getUserId();
     $company_id = $_SESSION['company_id'];
-
-    if (!$app->verifyCompanyExists($company_id)) {
-        session_destroy();
-        header("Location: index.php?error=company_deleted");
-        exit();
-    }
-
-    if ($company_id > 0) {
-        $check_company = $db->query("SELECT company_id FROM company WHERE company_id = $company_id");
-        if ($check_company->num_rows == 0) {
-            // Déconnecter l'utilisateur si l'entreprise n'existe plus
-            session_destroy();
-            header("Location: index.php?error=company_deleted");
-            exit();
-        }
-    }
     
     // Traiter les actions
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -1941,9 +1925,21 @@ function displayClientDashboard($auth, $app, $db) {
                         <input type="date" name="end_date" required
                                class="w-full px-4 py-2 border rounded-lg"
                                id="end_date">
+                    </div>
                     
+                    <div>
+                        <label class="block text-gray-700 mb-2">Wilaya de prise en charge</label>
+                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
+                            <option value="">Sélectionnez une wilaya</option>
+                            <?php
+                            $wilayas = $app->getWilayas();
+                            while ($wilaya = $wilayas->fetch_assoc()):
+                            ?>
+                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
+                            <?php endwhile; ?>
+                        </select>
+                    </div>
                     
-                            </div>
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <p class="text-sm text-gray-700">Prix estimé: <span id="estimatedPrice" class="font-bold text-blue-600">0</span> DA</p>
                         <p class="text-xs text-gray-500 mt-1">Le calcul se fait automatiquement selon la durée</p>
