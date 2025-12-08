@@ -2206,17 +2206,70 @@ function displayAgentDashboard($auth, $app, $db) {
                             $update_client->bind_param("ii", $client_id, $company_id);
                             $update_client->execute();
                             
-                            // 5. Make the car available again
-                            $update_car = $db->prepare("UPDATE car SET voiture_work = 'disponible' WHERE id_car = ? AND company_id = ?");
-                            $update_car->bind_param("ii", $car_id, $company_id);
-                            $update_car->execute();
+                            // NE PAS rendre la voiture disponible ici - seulement quand elle sera retournée
+                            // La voiture reste non disponible jusqu'à ce qu'elle soit retournée
                             
                             $db->conn->commit();
-                            $success = "Réservation marquée comme payée avec succès!";
+                            $success = "Réservation marquée comme payée avec succès! La voiture reste marquée comme louée jusqu'au retour.";
                             
                         } catch (Exception $e) {
                             $db->conn->rollback();
                             $error = "Erreur lors du paiement: " . $e->getMessage();
+                        }
+                    }
+                    break;
+                    
+                case 'car_returned':
+                    if (isset($_POST['reservation_id'])) {
+                        $reservation_id = (int)$_POST['reservation_id'];
+                        
+                        // Start transaction
+                        $db->conn->begin_transaction();
+                        
+                        try {
+                            // 1. Vérifier que la réservation est payée
+                            $reservation_query = $db->query("
+                                SELECT r.*, p.status as payment_status, ca.id_car, ca.voiture_work 
+                                FROM reservation r
+                                LEFT JOIN payment p ON r.id_payment = p.id_payment
+                                JOIN car ca ON r.car_id = ca.id_car
+                                WHERE r.id_reservation = $reservation_id 
+                                AND r.id_company = $company_id
+                            ");
+                            
+                            if ($reservation_query->num_rows === 0) {
+                                throw new Exception("Réservation non trouvée");
+                            }
+                            
+                            $reservation_data = $reservation_query->fetch_assoc();
+                            $car_id = $reservation_data['id_car'];
+                            
+                            // 2. Vérifier que le paiement a été effectué
+                            if ($reservation_data['payment_status'] != 'paid') {
+                                throw new Exception("La réservation doit être payée avant de retourner la voiture");
+                            }
+                            
+                            // 3. Vérifier que la voiture est actuellement non disponible
+                            if ($reservation_data['voiture_work'] == 'disponible') {
+                                throw new Exception("La voiture est déjà disponible");
+                            }
+                            
+                            // 4. Rendre la voiture disponible
+                            $update_car = $db->prepare("UPDATE car SET voiture_work = 'disponible' WHERE id_car = ? AND company_id = ?");
+                            $update_car->bind_param("ii", $car_id, $company_id);
+                            $update_car->execute();
+                            
+                            // 5. Mettre à jour le statut de la réservation
+                            $update_reservation = $db->prepare("UPDATE reservation SET status = 'completed' WHERE id_reservation = ? AND id_company = ?");
+                            $update_reservation->bind_param("ii", $reservation_id, $company_id);
+                            $update_reservation->execute();
+                            
+                            $db->conn->commit();
+                            $success = "Voiture marquée comme retournée et disponible pour de nouvelles locations!";
+                            
+                        } catch (Exception $e) {
+                            $db->conn->rollback();
+                            $error = "Erreur lors du retour de la voiture: " . $e->getMessage();
                         }
                     }
                     break;
@@ -2245,8 +2298,6 @@ function displayAgentDashboard($auth, $app, $db) {
             }
         }
     }
-
-    
     
     // Obtenir les informations de l'agent
     $agent_info = $db->query("SELECT * FROM agent WHERE id = $agent_id")->fetch_assoc();
@@ -2266,10 +2317,11 @@ function displayAgentDashboard($auth, $app, $db) {
         LIMIT 10
     ");
     
-    // Obtenir les réservations récentes
+    // Obtenir les réservations récentes avec l'état de la voiture
     $reservations = $db->query("
         SELECT r.*, cl.nom as client_nom, cl.prenom as client_prenom, 
-               ca.marque, ca.model, w.name as wilaya_name, p.status as payment_status
+               ca.marque, ca.model, ca.voiture_work as car_status, ca.id_car,
+               w.name as wilaya_name, p.status as payment_status
         FROM reservation r
         JOIN client cl ON r.id_client = cl.id
         JOIN car ca ON r.car_id = ca.id_car
@@ -2455,6 +2507,10 @@ function displayAgentDashboard($auth, $app, $db) {
                             $status_text = 'En attente';
                             $status_class = 'bg-red-100 text-red-800';
                         }
+                        
+                        // Déterminer l'état de la voiture
+                        $car_status_text = $res['car_status'] == 'disponible' ? 'Disponible' : 'Non disponible';
+                        $car_status_class = $res['car_status'] == 'disponible' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800';
                     ?>
                     <div class="border border-gray-200 rounded-lg p-4">
                         <div class="flex justify-between items-start mb-2">
@@ -2493,16 +2549,32 @@ function displayAgentDashboard($auth, $app, $db) {
                             </div>
                         </div>
                         
-                        <div class="flex justify-between items-center mt-2">
+                        <div class="mt-2">
+                            <span class="text-xs px-2 py-1 rounded <?php echo $car_status_class; ?>">
+                                <i class="fas fa-car mr-1"></i><?php echo $car_status_text; ?>
+                            </span>
+                        </div>
+                        
+                        <div class="flex justify-between items-center mt-3">
                             <span class="text-xs px-2 py-1 rounded <?php echo $status_class; ?>">
                                 <?php echo $status_text; ?>
                             </span>
-                            <?php if ($res['status'] == 'active' && $res['payment_status'] != 'paid'): ?>
-                            <button onclick="markAsPaid(<?php echo $res['id_reservation']; ?>)" 
-                                    class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
-                                <i class="fas fa-money-bill mr-1"></i>Marquer comme payé
-                            </button>
-                            <?php endif; ?>
+                            
+                            <div class="flex space-x-2">
+                                <?php if ($res['status'] == 'active' && $res['payment_status'] != 'paid'): ?>
+                                <button onclick="markAsPaid(<?php echo $res['id_reservation']; ?>)" 
+                                        class="text-xs bg-blue-600 text-white px-2 py-1 rounded hover:bg-blue-700">
+                                    <i class="fas fa-money-bill mr-1"></i>Marquer payé
+                                </button>
+                                <?php endif; ?>
+                                
+                                <?php if ($res['payment_status'] == 'paid' && $res['car_status'] == 'non disponible'): ?>
+                                <button onclick="carReturned(<?php echo $res['id_reservation']; ?>)" 
+                                        class="text-xs bg-green-600 text-white px-2 py-1 rounded hover:bg-green-700">
+                                    <i class="fas fa-car mr-1"></i>Voiture retournée
+                                </button>
+                                <?php endif; ?>
+                            </div>
                         </div>
                     </div>
                     <?php endwhile; ?>
@@ -2583,112 +2655,19 @@ function displayAgentDashboard($auth, $app, $db) {
                     
                     <div>
                         <label class="block text-gray-700 mb-2">Nationalité *</label>
-                        <input type="text" name="nationalite" required 
-                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
-                        <input type="text" name="numero_cart_national" required 
-                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Wilaya *</label>
-                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <option value="">Sélectionnez une wilaya</option>
-                            <?php
-                            $wilayas = $app->getWilayas();
-                            while ($wilaya = $wilayas->fetch_assoc()):
-                            ?>
-                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Email *</label>
-                        <input type="email" name="email" required
-                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-
-                    <div>
-                        <label class="block text-gray-700 mb-2">Mot de passe *</label>
-                        <input type="password" name="password" required minlength="6"
-                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
-                    </div>
-                </div>
-                
-                <div class="flex justify-end space-x-3 mt-6">
-                    <button type="button" onclick="closeModal('addClientModal')" 
-                            class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                        Annuler
-                    </button>
-                    <button type="submit" 
-                            class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                        Ajouter le client
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-    
-    <!-- Modal d'édition de client -->
-    <div id="editClientModal" class="modal">
-        <div class="modal-content fade-in">
-            <div class="flex justify-between items-center mb-4">
-                <h3 class="text-xl font-bold text-gray-800">Modifier un Client</h3>
-                <button onclick="closeModal('editClientModal')" class="text-gray-500 hover:text-gray-700">
-                    <i class="fas fa-times"></i>
-                </button>
-            </div>
-            
-            <form method="POST">
-                <input type="hidden" name="action" value="update_client">
-                <input type="hidden" name="client_id" id="edit_client_id">
-                
-                <div class="space-y-4">
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="block text-gray-700 mb-2">Nom *</label>
-                            <input type="text" name="nom" id="edit_client_nom" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        <div>
-                            <label class="block text-gray-700 mb-2">Prénom *</label>
-                            <input type="text" name="prenom" id="edit_client_prenom" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
-                        <input type="number" name="age" id="edit_client_age" min="24" required 
-                               class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                    </div>
-                    
-                    <div>
-                        <label class="block text-gray-700 mb-2">Téléphone *</label>
-                            <input type="tel" name="numero_tlfn" id="edit_client_tel" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-gray-700 mb-2">Nationalité *</label>
-                            <input type="text" name="nationalite" id="edit_client_nationalite" required 
+                            <input type="text" name="nationalite" required 
                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                         
                         <div>
                             <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
-                            <input type="text" name="numero_cart_national" id="edit_client_carte" required 
+                            <input type="text" name="numero_cart_national" required 
                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                         
                         <div>
                             <label class="block text-gray-700 mb-2">Wilaya *</label>
-                            <select name="wilaya_id" id="edit_client_wilaya" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                                 <option value="">Sélectionnez une wilaya</option>
                                 <?php
                                 $wilayas = $app->getWilayas();
@@ -2701,217 +2680,334 @@ function displayAgentDashboard($auth, $app, $db) {
                         
                         <div>
                             <label class="block text-gray-700 mb-2">Email *</label>
-                            <input type="email" name="email" id="edit_client_email" required
+                            <input type="email" name="email" required
                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
 
                         <div>
-                            <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                            <input type="password" name="password" 
+                            <label class="block text-gray-700 mb-2">Mot de passe *</label>
+                            <input type="password" name="password" required minlength="6"
                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
                         </div>
                     </div>
                     
                     <div class="flex justify-end space-x-3 mt-6">
-                        <button type="button" onclick="closeModal('editClientModal')" 
+                        <button type="button" onclick="closeModal('addClientModal')" 
                                 class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
                             Annuler
                         </button>
                         <button type="submit" 
                                 class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            Mettre à jour
+                            Ajouter le client
                         </button>
                     </div>
                 </form>
             </div>
         </div>
         
-        <!-- Modal d'édition de profil agent -->
-        <div id="editProfileModal" class="modal">
+        <!-- Modal d'édition de client -->
+        <div id="editClientModal" class="modal">
             <div class="modal-content fade-in">
                 <div class="flex justify-between items-center mb-4">
-                    <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
-                    <button onclick="closeModal('editProfileModal')" class="text-gray-500 hover:text-gray-700">
+                    <h3 class="text-xl font-bold text-gray-800">Modifier un Client</h3>
+                    <button onclick="closeModal('editClientModal')" class="text-gray-500 hover:text-gray-700">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
                 
                 <form method="POST">
-                    <input type="hidden" name="action" value="update_profile">
+                    <input type="hidden" name="action" value="update_client">
+                    <input type="hidden" name="client_id" id="edit_client_id">
                     
                     <div class="space-y-4">
                         <div class="grid grid-cols-2 gap-4">
                             <div>
                                 <label class="block text-gray-700 mb-2">Nom *</label>
-                                <input type="text" name="nom" value="<?php echo htmlspecialchars($agent_info['nom']); ?>" required 
+                                <input type="text" name="nom" id="edit_client_nom" required 
                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                             <div>
                                 <label class="block text-gray-700 mb-2">Prénom *</label>
-                                <input type="text" name="prenom" value="<?php echo htmlspecialchars($agent_info['prenom']); ?>" required 
+                                <input type="text" name="prenom" id="edit_client_prenom" required 
                                        class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                             </div>
                         </div>
                         
                         <div>
                             <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
-                            <input type="number" name="age" value="<?php echo $agent_info['age']; ?>" min="24" required 
+                            <input type="number" name="age" id="edit_client_age" min="24" required 
                                    class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
                         </div>
                         
                         <div>
                             <label class="block text-gray-700 mb-2">Téléphone *</label>
-                            <input type="tel" name="numero_tlfn" value="<?php echo htmlspecialchars($agent_info['numero_tlfn']); ?>" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <input type="tel" name="numero_tlfn" id="edit_client_tel" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Nationalité *</label>
+                                <input type="text" name="nationalite" id="edit_client_nationalite" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
+                                <input type="text" name="numero_cart_national" id="edit_client_carte" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Wilaya *</label>
+                                <select name="wilaya_id" id="edit_client_wilaya" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <option value="">Sélectionnez une wilaya</option>
+                                    <?php
+                                    $wilayas = $app->getWilayas();
+                                    while ($wilaya = $wilayas->fetch_assoc()):
+                                    ?>
+                                        <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Email *</label>
+                                <input type="email" name="email" id="edit_client_email" required
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+
+                            <div>
+                                <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                                <input type="password" name="password" 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
+                            </div>
                         </div>
                         
-                        <div>
-                            <label class="block text-gray-700 mb-2">Nationalité *</label>
-                            <input type="text" name="nationalite" value="<?php echo htmlspecialchars($agent_info['nationalite']); ?>" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <div class="flex justify-end space-x-3 mt-6">
+                            <button type="button" onclick="closeModal('editClientModal')" 
+                                    class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                Annuler
+                            </button>
+                            <button type="submit" 
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                Mettre à jour
+                            </button>
                         </div>
-                        
-                        <div>
-                            <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
-                            <input type="text" name="numero_cart_national" value="<?php echo htmlspecialchars($agent_info['numero_cart_national']); ?>" required 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-gray-700 mb-2">Wilaya *</label>
-                            <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                                <?php
-                                $wilayas = $app->getWilayas();
-                                while ($wilaya = $wilayas->fetch_assoc()):
-                                ?>
-                                    <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == $agent_info['wilaya_id'] ? 'selected' : ''; ?>>
-                                        <?php echo htmlspecialchars($wilaya['name']); ?>
-                                    </option>
-                                <?php endwhile; ?>
-                            </select>
-                        </div>
-                        
-                        <div>
-                            <label class="block text-gray-700 mb-2">Email *</label>
-                            <input type="email" name="email" value="<?php echo htmlspecialchars($agent_info['email']); ?>" required
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                        </div>
-                        
-                        <div>
-                            <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
-                            <input type="password" name="password" 
-                                   class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
-                            <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
-                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Modal d'édition de profil agent -->
+            <div id="editProfileModal" class="modal">
+                <div class="modal-content fade-in">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="text-xl font-bold text-gray-800">Modifier mon Profil</h3>
+                        <button onclick="closeModal('editProfileModal')" class="text-gray-500 hover:text-gray-700">
+                            <i class="fas fa-times"></i>
+                        </button>
                     </div>
                     
-                    <div class="flex justify-end space-x-3 mt-6">
-                        <button type="button" onclick="closeModal('editProfileModal')" 
-                                class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
-                            Annuler
-                        </button>
-                        <button type="submit" 
-                                class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                            Mettre à jour
-                        </button>
-                    </div>
-                </form>
+                    <form method="POST">
+                        <input type="hidden" name="action" value="update_profile">
+                        
+                        <div class="space-y-4">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label class="block text-gray-700 mb-2">Nom *</label>
+                                    <input type="text" name="nom" value="<?php echo htmlspecialchars($agent_info['nom']); ?>" required 
+                                           class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                                <div>
+                                    <label class="block text-gray-700 mb-2">Prénom *</label>
+                                    <input type="text" name="prenom" value="<?php echo htmlspecialchars($agent_info['prenom']); ?>" required 
+                                           class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                </div>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Âge (minimum 24) *</label>
+                                <input type="number" name="age" value="<?php echo $agent_info['age']; ?>" min="24" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Téléphone *</label>
+                                <input type="tel" name="numero_tlfn" value="<?php echo htmlspecialchars($agent_info['numero_tlfn']); ?>" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Nationalité *</label>
+                                <input type="text" name="nationalite" value="<?php echo htmlspecialchars($agent_info['nationalite']); ?>" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Numéro Carte Nationale *</label>
+                                <input type="text" name="numero_cart_national" value="<?php echo htmlspecialchars($agent_info['numero_cart_national']); ?>" required 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Wilaya *</label>
+                                <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                    <?php
+                                    $wilayas = $app->getWilayas();
+                                    while ($wilaya = $wilayas->fetch_assoc()):
+                                    ?>
+                                        <option value="<?php echo $wilaya['id']; ?>" <?php echo $wilaya['id'] == $agent_info['wilaya_id'] ? 'selected' : ''; ?>>
+                                            <?php echo htmlspecialchars($wilaya['name']); ?>
+                                        </option>
+                                    <?php endwhile; ?>
+                                </select>
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Email *</label>
+                                <input type="email" name="email" value="<?php echo htmlspecialchars($agent_info['email']); ?>" required
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                            </div>
+                            
+                            <div>
+                                <label class="block text-gray-700 mb-2">Nouveau mot de passe (laisser vide pour ne pas changer)</label>
+                                <input type="password" name="password" 
+                                       class="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500">
+                                <p class="text-xs text-gray-500 mt-1">Minimum 6 caractères</p>
+                            </div>
+                        </div>
+                        
+                        <div class="flex justify-end space-x-3 mt-6">
+                            <button type="button" onclick="closeModal('editProfileModal')" 
+                                    class="px-4 py-2 border border-gray-300 rounded-lg hover:bg-gray-50">
+                                Annuler
+                            </button>
+                            <button type="submit" 
+                                    class="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                Mettre à jour
+                            </button>
+                        </div>
+                    </form>
+                </div>
             </div>
-        </div>
-        
-        <script>
-        function showAddClientForm() {
-            document.getElementById('addClientModal').style.display = 'block';
-        }
-        
-        function showEditProfileForm() {
-            document.getElementById('editProfileModal').style.display = 'block';
-        }
-        
-        function editClient(client) {
-            document.getElementById('edit_client_id').value = client.id;
-            document.getElementById('edit_client_nom').value = client.nom;
-            document.getElementById('edit_client_prenom').value = client.prenom;
-            document.getElementById('edit_client_age').value = client.age;
-            document.getElementById('edit_client_tel').value = client.numero_tlfn;
-            document.getElementById('edit_client_nationalite').value = client.nationalite;
-            document.getElementById('edit_client_carte').value = client.numero_cart_national;
-            document.getElementById('edit_client_wilaya').value = client.wilaya_id;
-            document.getElementById('edit_client_email').value = client.email || '';
-            document.getElementById('editClientModal').style.display = 'block';
-        }
-        
-        function markAsPaid(reservationId) {
-            if (confirm('Marquer cette réservation comme payée? Cette action est irréversible.')) {
-                // Create a form and submit it
-                const form = document.createElement('form');
-                form.method = 'POST';
-                form.style.display = 'none';
-                
-                const actionInput = document.createElement('input');
-                actionInput.type = 'hidden';
-                actionInput.name = 'action';
-                actionInput.value = 'mark_as_paid';
-                form.appendChild(actionInput);
-                
-                const reservationInput = document.createElement('input');
-                reservationInput.type = 'hidden';
-                reservationInput.name = 'reservation_id';
-                reservationInput.value = reservationId;
-                form.appendChild(reservationInput);
-                
-                document.body.appendChild(form);
-                form.submit();
+            
+            <script>
+            function showAddClientForm() {
+                document.getElementById('addClientModal').style.display = 'block';
             }
+            
+            function showEditProfileForm() {
+                document.getElementById('editProfileModal').style.display = 'block';
+            }
+            
+            function editClient(client) {
+                document.getElementById('edit_client_id').value = client.id;
+                document.getElementById('edit_client_nom').value = client.nom;
+                document.getElementById('edit_client_prenom').value = client.prenom;
+                document.getElementById('edit_client_age').value = client.age;
+                document.getElementById('edit_client_tel').value = client.numero_tlfn;
+                document.getElementById('edit_client_nationalite').value = client.nationalite;
+                document.getElementById('edit_client_carte').value = client.numero_cart_national;
+                document.getElementById('edit_client_wilaya').value = client.wilaya_id;
+                document.getElementById('edit_client_email').value = client.email || '';
+                document.getElementById('editClientModal').style.display = 'block';
+            }
+            
+            function markAsPaid(reservationId) {
+                if (confirm('Marquer cette réservation comme payée? Le client sera marqué comme "payer" mais la voiture restera indisponible jusqu\'au retour.')) {
+                    // Create a form and submit it
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.style.display = 'none';
+                    
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'mark_as_paid';
+                    form.appendChild(actionInput);
+                    
+                    const reservationInput = document.createElement('input');
+                    reservationInput.type = 'hidden';
+                    reservationInput.name = 'reservation_id';
+                    reservationInput.value = reservationId;
+                    form.appendChild(reservationInput);
+                    
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            }
+            
+            function carReturned(reservationId) {
+                if (confirm('Marquer cette voiture comme retournée? La voiture sera disponible pour de nouvelles locations.')) {
+                    // Create a form and submit it
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.style.display = 'none';
+                    
+                    const actionInput = document.createElement('input');
+                    actionInput.type = 'hidden';
+                    actionInput.name = 'action';
+                    actionInput.value = 'car_returned';
+                    form.appendChild(actionInput);
+                    
+                    const reservationInput = document.createElement('input');
+                    reservationInput.type = 'hidden';
+                    reservationInput.name = 'reservation_id';
+                    reservationInput.value = reservationId;
+                    form.appendChild(reservationInput);
+                    
+                    document.body.appendChild(form);
+                    form.submit();
+                }
+            }
+            
+            function closeModal(modalId) {
+                document.getElementById(modalId).style.display = 'none';
+            }
+            
+            // Fermer les modales en cliquant à l'extérieur
+            window.onclick = function(event) {
+                if (event.target.classList.contains('modal')) {
+                    event.target.style.display = 'none';
+                }
+            }
+            
+            // Ajouter des styles CSS pour les modales
+            const style = document.createElement('style');
+            style.textContent = `
+                .modal {
+                    display: none;
+                    position: fixed;
+                    z-index: 1000;
+                    left: 0;
+                    top: 0;
+                    width: 100%;
+                    height: 100%;
+                    background-color: rgba(0,0,0,0.5);
+                    overflow-y: auto;
+                }
+                .modal-content {
+                    background-color: white;
+                    margin: 5% auto;
+                    padding: 20px;
+                    border-radius: 12px;
+                    width: 90%;
+                    max-width: 600px;
+                    box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+                }
+                .fade-in {
+                    animation: fadeIn 0.3s;
+                }
+                @keyframes fadeIn {
+                    from { opacity: 0; transform: translateY(-20px); }
+                    to { opacity: 1; transform: translateY(0); }
+                }
+            `;
+            document.head.appendChild(style);
+            </script>
+            <?php
         }
-        
-        function closeModal(modalId) {
-            document.getElementById(modalId).style.display = 'none';
-        }
-        
-        // Fermer les modales en cliquant à l'extérieur
-        window.onclick = function(event) {
-            if (event.target.classList.contains('modal')) {
-                event.target.style.display = 'none';
-            }
-        }
-        
-        // Ajouter des styles CSS pour les modales
-        const style = document.createElement('style');
-        style.textContent = `
-            .modal {
-                display: none;
-                position: fixed;
-                z-index: 1000;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0,0,0,0.5);
-                overflow-y: auto;
-            }
-            .modal-content {
-                background-color: white;
-                margin: 5% auto;
-                padding: 20px;
-                border-radius: 12px;
-                width: 90%;
-                max-width: 600px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.2);
-            }
-            .fade-in {
-                animation: fadeIn 0.3s;
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(-20px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-        `;
-        document.head.appendChild(style);
-        </script>
-        <?php
-    }
     
 function displayAdminDashboard($auth, $app, $db) {
     $admin_id = $auth->getUserId();
