@@ -2242,24 +2242,11 @@ function displayAgentDashboard($auth, $app, $db) {
                         }
                     }
                     break;
-                    
-                case 'update_client_status':
-                    if (isset($_POST['client_id']) && isset($_POST['status'])) {
-                        $client_id = (int)$_POST['client_id'];
-                        $status = $db->real_escape_string($_POST['status']);
-                        
-                        $stmt = $db->prepare("UPDATE client SET status=? WHERE id=? AND company_id=?");
-                        $stmt->bind_param("sii", $status, $client_id, $company_id);
-                        if ($stmt->execute()) {
-                            $success = "Statut du client mis à jour avec succès";
-                        } else {
-                            $error = "Erreur lors de la mise à jour du statut: " . $stmt->error;
-                        }
-                    }
-                    break;
             }
         }
     }
+
+    
     
     // Obtenir les informations de l'agent
     $agent_info = $db->query("SELECT * FROM agent WHERE id = $agent_id")->fetch_assoc();
@@ -2392,7 +2379,14 @@ function displayAgentDashboard($auth, $app, $db) {
                                 <th class="px-4 py-3 text-left">Nom & Prénom</th>
                                 <th class="px-4 py-3 text-left">Téléphone</th>
                                 <th class="px-4 py-3 text-left">Wilaya</th>
-                                <th class="px-4 py-3 text-left">Statut</th>
+                                <th class="px-4 py-3 text-left">
+                                    <span class="relative group cursor-help">
+                                        Statut
+                                        <span class="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 px-2 py-1 bg-gray-800 text-white text-xs rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                            Statut automatique (système)
+                                        </span>
+                                    </span>
+                                </th>
                                 <th class="px-4 py-3 text-left">Actions</th>
                             </tr>
                         </thead>
@@ -2406,20 +2400,16 @@ function displayAgentDashboard($auth, $app, $db) {
                                 <td class="px-4 py-3"><?php echo htmlspecialchars($client['numero_tlfn']); ?></td>
                                 <td class="px-4 py-3"><?php echo htmlspecialchars($client['wilaya_name']); ?></td>
                                 <td class="px-4 py-3">
-                                    <form method="POST" class="inline" onsubmit="return confirm('Changer le statut de ce client?');">
-                                        <input type="hidden" name="action" value="update_client_status">
-                                        <input type="hidden" name="client_id" value="<?php echo $client['id']; ?>">
-                                        <select name="status" onchange="this.form.submit()" 
-                                                class="text-xs px-2 py-1 rounded <?php 
-                                                    echo $client['status'] == 'payer' ? 'bg-green-100 text-green-800' :
-                                                    ($client['status'] == 'reserve' ? 'bg-yellow-100 text-yellow-800' :
-                                                    ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
-                                            <option value="non reserve" <?php echo $client['status'] == 'non reserve' ? 'selected' : ''; ?>>Non réservé</option>
-                                            <option value="payer" <?php echo $client['status'] == 'payer' ? 'selected' : ''; ?>>Payé</option>
-                                            <option value="reserve" <?php echo $client['status'] == 'reserve' ? 'selected' : ''; ?>>Réservé</option>
-                                            <option value="annuler" <?php echo $client['status'] == 'annuler' ? 'selected' : ''; ?>>Annulé</option>
-                                        </select>
-                                    </form>
+                                    <span class="text-xs px-2 py-1 rounded <?php 
+                                        echo $client['status'] == 'payer' ? 'bg-green-100 text-green-800' :
+                                        ($client['status'] == 'reserve' ? 'bg-yellow-100 text-yellow-800' :
+                                        ($client['status'] == 'annuler' ? 'bg-red-100 text-red-800' : 'bg-gray-100 text-gray-800')); ?>">
+                                        <?php 
+                                        echo $client['status'] == 'payer' ? 'Payé' :
+                                             ($client['status'] == 'reserve' ? 'Réservé' :
+                                             ($client['status'] == 'annuler' ? 'Annulé' : 'Non réservé')); 
+                                        ?>
+                                    </span>
                                 </td>
                                 <td class="px-4 py-3">
                                     <div class="flex space-x-2">
