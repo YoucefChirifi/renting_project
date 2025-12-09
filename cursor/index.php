@@ -1667,24 +1667,106 @@ function displayClientDashboard($auth, $app, $db) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($_POST['action'])) {
             switch ($_POST['action']) {
-                case 'reserve':
-                    $reservation_data = [
-                        'id_client' => $client_id,
-                        'id_company' => $company_id,
-                        'car_id' => $_POST['car_id'],
-                        'wilaya_id' => $_POST['wilaya_id'],
-                        'start_date' => $_POST['start_date'],
-                        'end_date' => $_POST['end_date']
-                    ];
+               case 'reserve':
+    $start_date = $_POST['start_date'];
+    $end_date = $_POST['end_date'];
+
+    // 1. CHECK FOR OVERLAPPING RESERVATIONS
+    // We look for any 'active' reservation that overlaps with the chosen dates
+    // Logic: (ExistingStart < NewEnd) AND (ExistingEnd > NewStart)
+    $check_stmt = $db->prepare("SELECT id_reservation FROM reservation 
+                               WHERE id_client = ? 
+                               AND status = 'active' 
+                               AND start_date < ? 
+                               AND end_date > ?");
+    
+    // Assuming client_id is integer, dates are strings
+    $check_stmt->bind_param("iss", $client_id, $end_date, $start_date);
+    $check_stmt->execute();
+    $check_result = $check_stmt->get_result();
+
+    if ($check_result->num_rows > 0) {
+        // Error: Client already has an active reservation during this time
+        $error = "Vous avez déjà une réservation active durant cette période. Veuillez retourner la voiture avant d'en louer une autre.";
+    } else {
+        // 2. PROCEED WITH RESERVATION (No overlap found)
+        
+        // Get client's wilaya (as per your previous request)
+        $client_info = $db->query("SELECT wilaya_id FROM client WHERE id = $client_id")->fetch_assoc();
+
+        $reservation_data = [
+            'id_client' => $client_id,
+            'id_company' => $company_id,
+            'car_id' => $_POST['car_id'],
+            'wilaya_id' => $client_info['wilaya_id'],
+            'start_date' => $start_date,
+            'end_date' => $end_date
+        ];
+
+        // Call your function to create the reservation
+        // Assuming your app class has a method like createReservation or you insert manually:
+        if ($app->createReservation($reservation_data)) {
+            $success = "Réservation créée avec succès!";
+        } else {
+            $error = "Erreur lors de la réservation.";
+        }
+    }
+    break;
+
+    case 'cancel':
+                $reservation_id = $_POST['reservation_id'];
+                
+                // 1. First, get the car_id from the reservation before cancelling
+                $get_car_stmt = $db->prepare("SELECT car_id FROM reservation 
+                                              WHERE id_reservation = ? 
+                                              AND id_client = ? 
+                                              AND status = 'active'");
+                $get_car_stmt->bind_param("ii", $reservation_id, $client_id);
+                $get_car_stmt->execute();
+                $car_result = $get_car_stmt->get_result();
+                
+                if ($car_result->num_rows > 0) {
+                    $reservation_data = $car_result->fetch_assoc();
+                    $car_id = $reservation_data['car_id'];
                     
-                    $reservation_id = $app->createReservation($reservation_data);
+                    // 2. Update reservation status to 'cancelled'
+                    $stmt = $db->prepare("UPDATE reservation 
+                                          SET status = 'cancelled' 
+                                          WHERE id_reservation = ? 
+                                          AND id_client = ? 
+                                          AND status = 'active'");
                     
-                    if ($reservation_id) {
-                        $success = "Réservation créée avec succès!";
+                    $stmt->bind_param("ii", $reservation_id, $client_id);
+                    
+                    if ($stmt->execute() && $stmt->affected_rows > 0) {
+                        // 3. Make the car available again
+                        $update_car_stmt = $db->prepare("UPDATE car SET voiture_work = 'disponible' WHERE id_car = ?");
+                        $update_car_stmt->bind_param("i", $car_id);
+                        $update_car_stmt->execute();
+                        
+                        // 4. Check if client has other active reservations, if not, reset client status
+                        $check_other_reservations = $db->prepare("SELECT COUNT(*) as count FROM reservation 
+                                                                  WHERE id_client = ? 
+                                                                  AND status = 'active'");
+                        $check_other_reservations->bind_param("i", $client_id);
+                        $check_other_reservations->execute();
+                        $other_res_result = $check_other_reservations->get_result();
+                        $other_res_data = $other_res_result->fetch_assoc();
+                        
+                        if ($other_res_data['count'] == 0) {
+                            // No other active reservations, set client status to 'annuler'
+                            $db->query("UPDATE client SET status = 'annuler' WHERE id = $client_id");
+                        }
+                        
+                        $success = "Réservation annulée avec succès. La voiture est maintenant disponible.";
                     } else {
-                        $error = "Erreur lors de la réservation";
+                        $error = "Impossible d'annuler. La réservation est peut-être déjà terminée ou annulée.";
                     }
-                    break;
+                } else {
+                    $error = "Réservation introuvable ou vous n'avez pas l'autorisation d'annuler cette réservation.";
+                }
+                break;
+
                     
                 case 'payer':
                     if (strlen($_POST['card_number']) == 16 && strlen($_POST['card_code']) == 3) {
@@ -1871,17 +1953,30 @@ function displayClientDashboard($auth, $app, $db) {
                             </p>
                             
                             <div class="flex justify-between items-center mt-3">
-                                <span class="text-xs px-2 py-1 rounded 
-                                    <?php echo $res['payment_status'] == 'paid' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
-                                    <?php echo $res['payment_status'] == 'paid' ? 'Payé' : 'En attente'; ?>
+                                <span class="text-xs px-2 py-1 rounded <?php echo ($res['payment_status'] == 'paid') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
+                                    <?php echo ($res['payment_status'] == 'paid') ? 'Payé' : 'En attente'; ?>
                                 </span>
-                                
-                                <?php if ($res['payment_status'] != 'paid' && $res['status'] == 'active'): ?>
-                                <button onclick="showPaymentForm(<?php echo $res['id_reservation']; ?>, '<?php echo htmlspecialchars($res['marque'] . ' ' . $res['model']); ?>', <?php echo $res['montant']; ?>)" 
-                                        class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded">
-                                    Payer
-                                </button>
-                                <?php endif; ?>
+
+                                <div class="flex space-x-2">
+                                    <!-- PAYMENT BUTTON (Existing logic) -->
+                                    <?php if ($res['payment_status'] != 'paid' && $res['status'] == 'active'): ?>
+                                        <button onclick="showPaymentForm(<?php echo $res['id_reservation']; ?>, '<?php echo htmlspecialchars($res['marque'] . ' ' . $res['model']); ?>', <?php echo $res['montant']; ?>)" 
+                                                class="text-sm bg-green-600 hover:bg-green-700 text-white px-3 py-1 rounded transition">
+                                            Payer
+                                        </button>
+                                    <?php endif; ?>
+
+                                    <!-- CANCEL BUTTON (New logic) -->
+                                    <?php if ($res['status'] == 'active'): ?>
+                                        <form method="POST" onsubmit="return confirm('Êtes-vous sûr de vouloir annuler cette réservation ?');" style="display:inline;">
+                                            <input type="hidden" name="action" value="cancel">
+                                            <input type="hidden" name="reservation_id" value="<?php echo $res['id_reservation']; ?>">
+                                            <button type="submit" class="text-sm bg-red-100 hover:bg-red-200 text-red-700 px-3 py-1 rounded transition">
+                                                <i class="fas fa-times mr-1"></i> Annuler
+                                            </button>
+                                        </form>
+                                    <?php endif; ?>
+                                </div>
                             </div>
                         </div>
                         <?php endwhile; ?>
@@ -1927,18 +2022,7 @@ function displayClientDashboard($auth, $app, $db) {
                                id="end_date">
                     </div>
                     
-                    <div>
-                        <label class="block text-gray-700 mb-2">Wilaya de prise en charge</label>
-                        <select name="wilaya_id" required class="w-full px-4 py-2 border rounded-lg">
-                            <option value="">Sélectionnez une wilaya</option>
-                            <?php
-                            $wilayas = $app->getWilayas();
-                            while ($wilaya = $wilayas->fetch_assoc()):
-                            ?>
-                                <option value="<?php echo $wilaya['id']; ?>"><?php echo htmlspecialchars($wilaya['name']); ?></option>
-                            <?php endwhile; ?>
-                        </select>
-                    </div>
+                    
                     
                     <div class="bg-blue-50 p-4 rounded-lg">
                         <p class="text-sm text-gray-700">Prix estimé: <span id="estimatedPrice" class="font-bold text-blue-600">0</span> DA</p>
