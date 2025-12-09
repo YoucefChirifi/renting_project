@@ -1922,19 +1922,20 @@ function displayClientDashboard($auth, $app, $db) {
                     </h2>
                     
                     <div class="space-y-4">
-                        <?php while ($res = $reservations->fetch_assoc()): ?>
-                        <div class="border border-gray-200 rounded-lg p-4">
-                            <div class="flex justify-between items-start mb-2">
-                                <h4 class="font-bold text-gray-800">
-                                    <?php echo htmlspecialchars($res['marque'] . ' ' . $res['model']); ?>
-                                </h4>
-                                <span class="px-2 py-1 rounded text-xs 
-                                    <?php echo $res['status'] == 'active' ? 'bg-yellow-100 text-yellow-800' :
-                                          ($res['status'] == 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'); ?>">
-                                    <?php echo $res['status'] == 'active' ? 'Active' :
-                                          ($res['status'] == 'completed' ? 'Terminée' : 'Annulée'); ?>
-                                </span>
-                            </div>
+    <?php while ($res = $reservations->fetch_assoc()): ?>
+    <div class="border border-gray-200 rounded-lg p-4">
+        <div class="flex justify-between items-start mb-2">
+            <h4 class="font-bold text-gray-800">
+                <?php echo htmlspecialchars($res['marque'] . ' ' . $res['model']); ?>
+            </h4>
+            <span class="px-2 py-1 rounded text-xs 
+                <?php echo $res['status'] == 'active' ? 'bg-yellow-100 text-yellow-800' :
+                    ($res['status'] == 'completed' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'); ?>">
+                <?php echo $res['status'] == 'active' ? 'En attente' : 
+                    ($res['status'] == 'completed' ? 'Terminée' : 'Annulée'); ?>
+            </span>
+        </div>
+
                             
                             <p class="text-sm text-gray-600 mb-2">
                                 <i class="far fa-calendar mr-1"></i>
@@ -1953,8 +1954,18 @@ function displayClientDashboard($auth, $app, $db) {
                             </p>
                             
                             <div class="flex justify-between items-center mt-3">
-                                <span class="text-xs px-2 py-1 rounded <?php echo ($res['payment_status'] == 'paid') ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'; ?>">
-                                    <?php echo ($res['payment_status'] == 'paid') ? 'Payé' : 'En attente'; ?>
+                                <span class="text-xs px-2 py-1 rounded <?php 
+                                    echo ($res['status'] === 'cancelled')
+                                        ? 'bg-red-100 text-red-800'
+                                        : (($res['payment_status'] == 'paid')
+                                            ? 'bg-green-100 text-green-800'
+                                            : 'bg-yellow-100 text-yellow-800');
+                                ?>">
+                                    <?php 
+                                        echo ($res['status'] === 'cancelled')
+                                            ? 'Annulée'
+                                            : (($res['payment_status'] == 'paid') ? 'Payé' : 'En attente'); 
+                                    ?>
                                 </span>
 
                                 <div class="flex space-x-2">
