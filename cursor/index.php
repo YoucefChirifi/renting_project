@@ -1445,23 +1445,32 @@ function displayHeader($title = "DZLocation - Location de Voitures") {
             .transition-all { transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
             .transition-opacity { transition-property: opacity; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; }
             
-            /* Hover States */
-            .hover\:bg-blue-600:hover { background-color: #2563eb; }
-            .hover\:bg-blue-700:hover { background-color: #1d4ed8; }
-            .hover\:bg-green-600:hover { background-color: #16a34a; }
-            .hover\:bg-green-700:hover { background-color: #15803d; }
-            .hover\:bg-red-600:hover { background-color: #dc2626; }
-            .hover\:bg-red-700:hover { background-color: #b91c1c; }
-            .hover\:bg-red-200:hover { background-color: #fecaca; }
-            .hover\:bg-yellow-600:hover { background-color: #ca8a04; }
-            .hover\:bg-purple-600:hover { background-color: #9333ea; }
-            .hover\:bg-purple-700:hover { background-color: #7e22ce; }
-            .hover\:bg-gray-100:hover { background-color: #f3f4f6; }
-            .hover\:bg-gray-200:hover { background-color: #e5e7eb; }
-            .hover\:text-blue-600:hover { color: #2563eb; }
-            .hover\:text-gray-900:hover { color: #111827; }
-            .hover\:shadow-lg:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); }
-            .hover\:opacity-100:hover { opacity: 1; }
+            /* Hover States with transitions */
+            .hover\:bg-blue-600:hover { background-color: #2563eb; transition: background-color 0.3s ease; }
+            .hover\:bg-blue-700:hover { background-color: #1d4ed8; transition: background-color 0.3s ease; }
+            .hover\:bg-green-600:hover { background-color: #16a34a; transition: background-color 0.3s ease; }
+            .hover\:bg-green-700:hover { background-color: #15803d; transition: background-color 0.3s ease; }
+            .hover\:bg-red-600:hover { background-color: #dc2626; transition: background-color 0.3s ease; }
+            .hover\:bg-red-700:hover { background-color: #b91c1c; transition: background-color 0.3s ease; }
+            .hover\:bg-red-200:hover { background-color: #fecaca; transition: background-color 0.3s ease; }
+            .hover\:bg-yellow-600:hover { background-color: #ca8a04; transition: background-color 0.3s ease; }
+            .hover\:bg-purple-600:hover { background-color: #9333ea; transition: background-color 0.3s ease; }
+            .hover\:bg-purple-700:hover { background-color: #7e22ce; transition: background-color 0.3s ease; }
+            .hover\:bg-gray-100:hover { background-color: #f3f4f6; transition: background-color 0.3s ease; }
+            .hover\:bg-gray-200:hover { background-color: #e5e7eb; transition: background-color 0.3s ease; }
+            .hover\:text-blue-600:hover { color: #2563eb; transition: color 0.3s ease; }
+            .hover\:text-gray-900:hover { color: #111827; transition: color 0.3s ease; }
+            .hover\:shadow-lg:hover { box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05); transition: box-shadow 0.3s ease; }
+            .hover\:opacity-100:hover { opacity: 1; transition: opacity 0.3s ease; }
+            
+            /* Button hover transitions */
+            button {
+                transition: background-color 0.3s ease, color 0.3s ease, transform 0.2s ease;
+            }
+            
+            button:hover {
+                transform: translateY(-1px);
+            }
             
             /* Opacity */
             .opacity-0 { opacity: 0; }
@@ -1550,6 +1559,114 @@ function displayHeader($title = "DZLocation - Location de Voitures") {
             
             .fade-in {
                 animation: fadeIn 0.3s ease-in-out;
+            }
+            
+            /* Remove borders from buttons */
+            button {
+                border: none;
+                outline: none;
+            }
+            
+            button:focus {
+                outline: none;
+            }
+            
+            /* Remove underline from links */
+            a {
+                text-decoration: none;
+            }
+            
+            a:hover {
+                text-decoration: none;
+            }
+            
+            /* Add margin for free space */
+            .container {
+                margin-bottom: 1rem;
+            }
+            
+            /* Remove margin from nav container */
+            nav .container {
+                margin-top: 0;
+            }
+            
+            main {
+                margin-top: 1.5rem;
+                margin-bottom: 1.5rem;
+            }
+            
+            /* Magenta gradient */
+            .bg-gradient-magenta {
+                background: linear-gradient(135deg, #d946ef 0%, #ec4899 100%);
+            }
+            
+            /* Centered content for admin stats */
+            .admin-stats-grid {
+                display: grid;
+                grid-template-columns: repeat(5, 1fr);
+                gap: 1.5rem;
+                margin-bottom: 2rem;
+            }
+            
+            .admin-stats-grid > div {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                text-align: center;
+            }
+            
+            @media (max-width: 1024px) {
+                .admin-stats-grid {
+                    grid-template-columns: repeat(2, 1fr);
+                }
+            }
+            
+            @media (max-width: 640px) {
+                .admin-stats-grid {
+                    grid-template-columns: 1fr;
+                }
+            }
+            
+            /* Responsive design for mobile and laptop */
+            @media (max-width: 768px) {
+                .container {
+                    padding-left: 1rem;
+                    padding-right: 1rem;
+                }
+                
+                .text-4xl {
+                    font-size: 1.875rem;
+                }
+                
+                .text-3xl {
+                    font-size: 1.5rem;
+                }
+                
+                .text-2xl {
+                    font-size: 1.25rem;
+                }
+                
+                nav .flex {
+                    flex-direction: column;
+                    gap: 1rem;
+                }
+                
+                nav .flex-1 {
+                    margin: 0.5rem 0;
+                }
+            }
+            
+            @media (min-width: 769px) and (max-width: 1024px) {
+                .container {
+                    max-width: 90%;
+                }
+            }
+            
+            @media (min-width: 1025px) {
+                .container {
+                    max-width: 1200px;
+                }
             }
         </style>
     </head>
@@ -1719,7 +1836,7 @@ if (isset($_GET['error']) && $_GET['error'] == 'company_deleted') {
             
             <?php if (!$auth->isLoggedIn()): ?>
             <!-- Sélection du rôle -->
-            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-12 mt-8">
                 <!-- Owner Card -->
                 <div class="bg-gradient-to-br from-yellow-50 to-orange-50 rounded-xl p-6 text-center card-hover border border-yellow-100">
                     <div class="w-16 h-16 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-4">
@@ -1760,7 +1877,7 @@ if (isset($_GET['error']) && $_GET['error'] == 'company_deleted') {
                 </div>
                 
                 <!-- Admin Card -->
-                <div class="bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl p-6 text-center card-hover border border-purple-100">
+                <div class="bg-gradient-to-br from-white to-purple-50 rounded-xl p-6 text-center card-hover border border-purple-100">
                     <div class="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-4">
                         <i class="fas fa-user-shield text-purple-600 text-2xl"></i>
                     </div>
@@ -1808,8 +1925,8 @@ if (isset($_GET['error']) && $_GET['error'] == 'company_deleted') {
                                class="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
                     </div>
                     
-                    <div class="flex justify-end items-center">
-                        <span class="text-gray-500 text-sm mr-4">* L'inscription se fait uniquement par un agent</span>
+                    <div class="flex flex-col md:flex-row justify-end items-end md:items-center gap-4">
+                        <span class="text-gray-500 text-sm">* L'inscription se fait uniquement par un agent</span>
                         <button type="submit" 
                                 class="bg-blue-600 hover:bg-blue-700 text-white px-6 py-3 rounded-lg transition">
                             <i class="fas fa-sign-in-alt mr-2"></i>Se connecter
@@ -2192,9 +2309,9 @@ function displayClientDashboard($auth, $app, $db) {
             </div>
         <?php endif; ?>
         
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <div class="flex flex-col lg:flex-row gap-6 w-full">
             <!-- Colonne de gauche: Voitures disponibles -->
-            <div class="lg:col-span-2">
+            <div class="flex-1 lg:w-1/2">
                 <div class="bg-white rounded-xl shadow-lg p-6">
                     <h2 class="text-2xl font-bold text-gray-800 mb-6">
                         <i class="fas fa-car mr-2"></i>Voitures Disponibles
@@ -2274,7 +2391,7 @@ function displayClientDashboard($auth, $app, $db) {
             </div>
             
             <!-- Colonne de droite: Réservations -->
-            <div>
+            <div class="flex-1 lg:w-1/2">
                 <!-- Liste des réservations -->
                 <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
                     <h2 class="text-2xl font-bold text-gray-800 mb-6">
@@ -2873,49 +2990,43 @@ function displayAgentDashboard($auth, $app, $db) {
         <!-- Statistiques rapides -->
         <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-users text-blue-600 text-xl"></i>
+                <div class="flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-users text-blue-600 text-2xl"></i>
                     </div>
-                    <div>
-                        <p class="text-gray-600">Total Clients</p>
-                        <p class="text-2xl font-bold text-gray-800"><?php echo $total_clients['count']; ?></p>
-                    </div>
+                    <p class="text-gray-600 text-sm mb-2">Total Clients</p>
+                    <p class="text-3xl font-bold text-gray-800"><?php echo $total_clients['count']; ?></p>
                 </div>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-car text-green-600 text-xl"></i>
+                <div class="flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-car text-green-600 text-2xl"></i>
                     </div>
-                    <div>
-                        <p class="text-gray-600">Voitures Disponibles</p>
-                        <p class="text-2xl font-bold text-gray-800"><?php echo $available_cars['count']; ?></p>
-                    </div>
+                    <p class="text-gray-600 text-sm mb-2">Voitures Disponibles</p>
+                    <p class="text-3xl font-bold text-gray-800"><?php echo $available_cars['count']; ?></p>
                 </div>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-money-bill-wave text-purple-600 text-xl"></i>
+                <div class="flex flex-col items-center justify-center text-center">
+                    <div class="w-16 h-16 bg-purple-100 rounded-lg flex items-center justify-center mb-3">
+                        <i class="fas fa-money-bill-wave text-purple-600 text-2xl"></i>
                     </div>
-                    <div>
-                        <p class="text-gray-600">Revenus du Mois</p>
-                        <?php
-                        $month_revenue = $db->query("
-                            SELECT SUM(montant) as total 
-                            FROM reservation 
-                            WHERE id_company = $company_id 
-                            AND MONTH(start_date) = MONTH(NOW())
-                            AND YEAR(start_date) = YEAR(NOW())
-                        ")->fetch_assoc();
-                        ?>
-                        <p class="text-2xl font-bold text-gray-800">
-                            <?php echo number_format($month_revenue['total'] ?? 0, 0, ',', ' '); ?> DA
-                        </p>
-                    </div>
+                    <p class="text-gray-600 text-sm mb-2">Revenus du Mois</p>
+                    <?php
+                    $month_revenue = $db->query("
+                        SELECT SUM(montant) as total 
+                        FROM reservation 
+                        WHERE id_company = $company_id 
+                        AND MONTH(start_date) = MONTH(NOW())
+                        AND YEAR(start_date) = YEAR(NOW())
+                    ")->fetch_assoc();
+                    ?>
+                    <p class="text-3xl font-bold text-gray-800">
+                        <?php echo number_format($month_revenue['total'] ?? 0, 0, ',', ' '); ?> DA
+                    </p>
                 </div>
             </div>
         </div>
@@ -3827,7 +3938,7 @@ case 'update_profile':
     
     <div class="min-h-screen">
         <!-- En-tête du tableau de bord -->
-        <div class="bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-xl p-6 mb-8">
+        <div class="bg-gradient-magenta text-white rounded-xl p-6 mb-8">
             <div class="flex justify-between items-center">
                 <div>
                     <h1 class="text-3xl font-bold">Tableau de Bord Administrateur</h1>
@@ -3857,78 +3968,58 @@ case 'update_profile':
         <?php endif; ?>
         
         <!-- Vue d'ensemble des statistiques -->
-        <div class="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
+        <div class="admin-stats-grid">
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-blue-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-car text-blue-600 text-xl"></i>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Total Voitures</p>
-                        <p class="text-2xl font-bold text-gray-800"><?php echo $total_cars['count']; ?></p>
-                    </div>
+                <div class="w-16 h-16 bg-blue-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-car text-blue-600 text-2xl"></i>
                 </div>
+                <p class="text-gray-600 text-sm mb-2">Total Voitures</p>
+                <p class="text-3xl font-bold text-gray-800"><?php echo $total_cars['count']; ?></p>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-green-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-users text-green-600 text-xl"></i>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Clients</p>
-                        <p class="text-2xl font-bold text-gray-800"><?php echo $total_clients['count']; ?></p>
-                    </div>
+                <div class="w-16 h-16 bg-green-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-users text-green-600 text-2xl"></i>
                 </div>
+                <p class="text-gray-600 text-sm mb-2">Clients</p>
+                <p class="text-3xl font-bold text-gray-800"><?php echo $total_clients['count']; ?></p>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-yellow-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-user-tie text-yellow-600 text-xl"></i>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Agents</p>
-                        <p class="text-2xl font-bold text-gray-800"><?php echo $total_agents['count']; ?></p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            <?php echo number_format($agent_salaries_total, 0, ',', ' '); ?> DA/mois
-                        </p>
-                    </div>
+                <div class="w-16 h-16 bg-yellow-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-user-tie text-yellow-600 text-2xl"></i>
                 </div>
+                <p class="text-gray-600 text-sm mb-2">Agents</p>
+                <p class="text-3xl font-bold text-gray-800"><?php echo $total_agents['count']; ?></p>
+                <p class="text-xs text-gray-500 mt-2">
+                    <?php echo number_format($agent_salaries_total, 0, ',', ' '); ?> DA/mois
+                </p>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-chart-line text-purple-600 text-xl"></i>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Revenus 30j</p>
-                        <p class="text-2xl font-bold text-gray-800">
-                            <?php echo number_format($revenue_last_30_days['total'] ?? 0, 0, ',', ' '); ?> DA
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            <?php echo $total_paid_reservations['count'] ?? 0; ?> réservations payées
-                        </p>
-                    </div>
+                <div class="w-16 h-16 bg-purple-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-chart-line text-purple-600 text-2xl"></i>
                 </div>
+                <p class="text-gray-600 text-sm mb-2">Revenus 30j</p>
+                <p class="text-3xl font-bold text-gray-800">
+                    <?php echo number_format($revenue_last_30_days['total'] ?? 0, 0, ',', ' '); ?> DA
+                </p>
+                <p class="text-xs text-gray-500 mt-2">
+                    <?php echo $total_paid_reservations['count'] ?? 0; ?> réservations payées
+                </p>
             </div>
             
             <div class="bg-white rounded-xl shadow p-6">
-                <div class="flex items-center">
-                    <div class="w-12 h-12 bg-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-100 rounded-lg flex items-center justify-center mr-4">
-                        <i class="fas fa-money-bill-wave text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-600 text-xl"></i>
-                    </div>
-                    <div>
-                        <p class="text-gray-600">Profit Net</p>
-                        <p class="text-2xl font-bold text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-800">
-                            <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
-                        </p>
-                        <p class="text-xs text-gray-500 mt-1">
-                            Marge: <?php echo number_format($profit_margin, 1, ',', ' '); ?>%
-                        </p>
-                    </div>
+                <div class="w-16 h-16 bg-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-100 rounded-lg flex items-center justify-center mx-auto mb-3">
+                    <i class="fas fa-money-bill-wave text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-600 text-2xl"></i>
                 </div>
+                <p class="text-gray-600 text-sm mb-2">Profit Net</p>
+                <p class="text-3xl font-bold text-<?php echo $net_profit >= 0 ? 'green' : 'red'; ?>-800">
+                    <?php echo number_format($net_profit, 0, ',', ' '); ?> DA
+                </p>
+                <p class="text-xs text-gray-500 mt-2">
+                    Marge: <?php echo number_format($profit_margin, 1, ',', ' '); ?>%
+                </p>
             </div>
         </div>
         
@@ -5366,57 +5457,330 @@ echo '</main>';
 
 // Afficher le pied de page
 ?>
-<footer class="bg-gray-900 text-white mt-12">
-    <div class="container mx-auto px-4 py-8">
-        <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
-            <div>
-                <h3 class="text-xl font-bold mb-4">
-                    <span class="text-blue-400">DZ</span>Location
-                </h3>
-                <p class="text-gray-400">
-                    Location de voitures professionnelle en Algérie. Service fiable et sécurisé.
-                </p>
+<footer class="footer">
+    <div class="footer-content">
+        <!-- Section principale -->
+        <div class="footer-main">
+            <div class="footer-logo">
+                <i class="fas fa-car footer-icon"></i>
+                <div class="logo-text">
+                    <span class="logo-dz">DZ</span><span class="logo-location">Location</span>
+                </div>
+                <p class="footer-tagline">Votre partenaire de confiance pour la location de voitures en Algérie</p>
             </div>
             
-            <div>
-                <h4 class="font-bold mb-4">Contact</h4>
-                <ul class="space-y-2 text-gray-400">
-                    <li><i class="fas fa-phone mr-2"></i>+213 555 123 456</li>
-                    <li><i class="fas fa-envelope mr-2"></i>contact@dzlocation.dz</li>
-                    <li><i class="fas fa-map-marker-alt mr-2"></i>Alger, Algérie</li>
+            <!-- Liens rapides -->
+            <div class="footer-links">
+                <h3 class="links-title">Navigation</h3>
+                <ul class="links-list">
+                    <li><a href="index.php" class="footer-link"><i class="fas fa-home"></i> Accueil</a></li>
+                    <li><a href="index.php" class="footer-link"><i class="fas fa-info-circle"></i> À propos</a></li>
+                    <li><a href="index.php" class="footer-link"><i class="fas fa-car"></i> Nos voitures</a></li>
+                    <li><a href="index.php" class="footer-link"><i class="fas fa-phone"></i> Contact</a></li>
                 </ul>
             </div>
             
-            <div>
-                <h4 class="font-bold mb-4">Liens Rapides</h4>
-                <ul class="space-y-2 text-gray-400">
-                    <li><a href="index.php" class="hover:text-white">Accueil</a></li>
-                    <li><a href="#" class="hover:text-white">Conditions générales</a></li>
-                </ul>
-            </div>
-            
-            <div>
-                <h4 class="font-bold mb-4">Suivez-nous</h4>
-                <div class="flex space-x-4">
-                    <a href="#" class="text-gray-400 hover:text-white">
-                        <i class="fab fa-facebook text-xl"></i>
-                    </a>
-                    <a href="#" class="text-gray-400 hover:text-white">
-                        <i class="fab fa-twitter text-xl"></i>
-                    </a>
-                    <a href="#" class="text-gray-400 hover:text-white">
-                        <i class="fab fa-instagram text-xl"></i>
-                    </a>
+            <!-- Contact -->
+            <div class="footer-contact">
+                <h3 class="contact-title">Contact</h3>
+                <div class="contact-info">
+                    <p><i class="fas fa-envelope contact-icon"></i> contact@dzlocation.dz</p>
+                    <p><i class="fas fa-phone contact-icon"></i> +213 123 456 789</p>
+                    <p><i class="fas fa-map-marker-alt contact-icon"></i> Alger, Algérie</p>
                 </div>
             </div>
         </div>
         
-        <div class="border-t border-gray-800 mt-8 pt-8 text-center text-gray-400">
-            <p>&copy; <?php echo date('Y'); ?> DZLocation. Tous droits réservés.</p>
-            <p class="mt-2 text-sm">Devant la gare TGV, Centre-ville, Alger</p>
+        <!-- Séparateur -->
+        <div class="footer-separator"></div>
+        
+        <!-- Section bas du footer -->
+        <div class="footer-bottom">
+            <div class="social-links">
+                <a href="#" class="social-link facebook" title="Facebook">
+                    <i class="fab fa-facebook-f"></i>
+                </a>
+                <a href="#" class="social-link twitter" title="Twitter">
+                    <i class="fab fa-twitter"></i>
+                </a>
+                <a href="#" class="social-link instagram" title="Instagram">
+                    <i class="fab fa-instagram"></i>
+                </a>
+                <a href="#" class="social-link linkedin" title="LinkedIn">
+                    <i class="fab fa-linkedin-in"></i>
+                </a>
+            </div>
+            
+            <div class="copyright">
+                <p>&copy; <?php echo date('Y'); ?> DZLocation - Tous droits réservés</p>
+                <p class="dev-credit">Développé avec <i class="fas fa-heart heart-icon"></i> par Chirifi Youssouf</p>
+            </div>
         </div>
     </div>
 </footer>
+
+<style>
+/* Styles pour le nouveau footer */
+.footer {
+    background: linear-gradient(135deg, #1e3a8a 0%, #1e40af 100%);
+    color: white;
+    padding: 3rem 0 1.5rem;
+    margin-top: 4rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.footer::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(90deg, #3b82f6, #8b5cf6, #ec4899);
+}
+
+.footer-content {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 0 2rem;
+}
+
+.footer-main {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+    gap: 3rem;
+    margin-bottom: 2rem;
+}
+
+.footer-logo {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+}
+
+.footer-icon {
+    font-size: 2.5rem;
+    color: #60a5fa;
+    margin-bottom: 1rem;
+    background: rgba(255, 255, 255, 0.1);
+    padding: 0.75rem;
+    border-radius: 12px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+}
+
+.logo-text {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1rem;
+}
+
+.logo-dz {
+    font-size: 2rem;
+    font-weight: 800;
+    color: #60a5fa;
+    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.logo-location {
+    font-size: 2rem;
+    font-weight: 800;
+    color: white;
+    margin-left: 0.25rem;
+}
+
+.footer-tagline {
+    color: #d1d5db;
+    line-height: 1.6;
+    max-width: 300px;
+}
+
+.footer-links, .footer-contact {
+    display: flex;
+    flex-direction: column;
+}
+
+.links-title, .contact-title {
+    font-size: 1.25rem;
+    font-weight: 600;
+    margin-bottom: 1.5rem;
+    color: white;
+    position: relative;
+    padding-bottom: 0.5rem;
+}
+
+.links-title::after, .contact-title::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 40px;
+    height: 3px;
+    background: #60a5fa;
+    border-radius: 2px;
+}
+
+.links-list {
+    list-style: none;
+    padding: 0;
+}
+
+.links-list li {
+    margin-bottom: 0.75rem;
+}
+
+.footer-link {
+    color: #d1d5db;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    transition: all 0.3s ease;
+    padding: 0.5rem;
+    border-radius: 8px;
+}
+
+.footer-link:hover {
+    color: white;
+    background: rgba(255, 255, 255, 0.1);
+    transform: translateX(5px);
+}
+
+.footer-link i {
+    margin-right: 0.75rem;
+    width: 20px;
+    text-align: center;
+}
+
+.contact-info {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.contact-info p {
+    display: flex;
+    align-items: center;
+    color: #d1d5db;
+    margin: 0;
+}
+
+.contact-icon {
+    margin-right: 1rem;
+    color: #60a5fa;
+    width: 20px;
+    text-align: center;
+}
+
+.footer-separator {
+    height: 1px;
+    background: rgba(255, 255, 255, 0.1);
+    margin: 2rem 0;
+}
+
+.footer-bottom {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2rem;
+    text-align: center;
+}
+
+.social-links {
+    display: flex;
+    gap: 1rem;
+}
+
+.social-link {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    text-decoration: none;
+    transition: all 0.3s ease;
+    font-size: 1rem;
+    position: relative;
+    overflow: hidden;
+}
+
+.social-link::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: currentColor;
+    opacity: 0.2;
+}
+
+.social-link:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.3);
+}
+
+.facebook { background: #3b5998; }
+.twitter { background: #1da1f2; }
+.instagram { background: linear-gradient(45deg, #405de6, #5851db, #833ab4, #c13584, #e1306c, #fd1d1d); }
+.linkedin { background: #0077b5; }
+
+.copyright {
+    color: #9ca3af;
+    font-size: 0.875rem;
+}
+
+.dev-credit {
+    margin-top: 0.5rem;
+    font-size: 0.8rem;
+    color: #d1d5db;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+.heart-icon {
+    color: #ef4444;
+    animation: heartbeat 1.5s infinite;
+}
+
+@keyframes heartbeat {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .footer-main {
+        grid-template-columns: 1fr;
+        gap: 2rem;
+        text-align: center;
+    }
+    
+    .footer-logo {
+        align-items: center;
+    }
+    
+    .links-title::after, .contact-title::after {
+        left: 50%;
+        transform: translateX(-50%);
+    }
+    
+    .footer-link {
+        justify-content: center;
+    }
+    
+    .contact-info p {
+        justify-content: center;
+    }
+    
+    .footer-bottom {
+        gap: 1.5rem;
+    }
+}
+</style>
 
 <script>
 // Gestion de l'inactivité (déconnexion après 30 minutes)
